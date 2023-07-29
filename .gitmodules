@@ -9,7 +9,7 @@
 	url = https://github.com/melowntech/vts-libs.git
 [submodule "externals/gdal-drivers"]
 	path = externals/gdal-drivers
-	url = https://github.com/melowntech/gdal-drivers.git
+	url = git@macon:melowntech/gdal-drivers
 [submodule "externals/libpydbglog"]
 	path = externals/libpydbglog
 	url = https://github.com/melowntech/libpydbglog.git
@@ -21,7 +21,7 @@
 	url = https://github.com/melowntech/libutility.git
 [submodule "externals/libgeo"]
 	path = externals/libgeo
-	url = https://github.com/melowntech/libgeo.git
+	url = git@macon:melowntech/libgeo.git
 [submodule "externals/libgeometry"]
 	path = externals/libgeometry
 	url = https://github.com/melowntech/libgeometry.git
