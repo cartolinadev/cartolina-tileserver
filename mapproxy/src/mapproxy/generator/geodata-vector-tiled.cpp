@@ -373,6 +373,7 @@ void GeodataVectorTiled::generateGeodata(Sink &sink
     }
 
     // heightcode data using warper's machinery
+    LOG(info1) << "Heightcoding.";
     auto hc(arsenal.warper.heightcode
             (tileFile, datasets.first, config, dem_.geoidGrid
              , openOptions, layerEnhancers(), sink));

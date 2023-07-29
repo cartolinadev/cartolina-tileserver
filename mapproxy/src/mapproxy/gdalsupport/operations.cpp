@@ -593,12 +593,17 @@ heightcode(ManagedBuffer &mb, const VectorDataset &vds
 {
     if (geoidGrid) {
         // apply geoid grid to SRS of rasterDs and set to rasterDsSrs
+        LOG(info1) << "GeoidGrid: " << *geoidGrid;
+        
         config.rasterDsSrs = geo::setGeoid(rds.back()->srs(), *geoidGrid);
     }
 
     if (vectorGeoidGrid && vds->GetLayerCount()) {
         if (auto ref = vds->GetLayer(0)->GetSpatialRef()) {
             // set vertical srs
+            LOG(info1) << "Adding vectorGeoidGrid: '" << *vectorGeoidGrid << "' to '" 
+                       << geo::SrsDefinition::fromReference(*ref) << "'.";
+            
             config.vectorDsSrs
                 = geo::SrsDefinition::fromReference
                 (geo::setGeoid(*ref, *vectorGeoidGrid));
@@ -632,6 +637,8 @@ heightcode(DatasetCache &cache, ManagedBuffer &mb
     for (const auto &ds : rasterDs) {
         rasterDsStack.push_back(&cache(ds.dataset));
     }
+    
+    LOG(info1) << "Here.";
 
     return heightcode(mb, openVectorDataset(vectorDs, config, openOptions)
                       , rasterDsStack
