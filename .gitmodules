@@ -9,7 +9,7 @@
 	url = https://github.com/melowntech/vts-libs.git
 [submodule "externals/gdal-drivers"]
 	path = externals/gdal-drivers
-	url = git@macon:melowntech/gdal-drivers
+	url = git@macon:melowntech/gdal-drivers.git
 [submodule "externals/libpydbglog"]
 	path = externals/libpydbglog
 	url = https://github.com/melowntech/libpydbglog.git
