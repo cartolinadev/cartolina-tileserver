@@ -50,23 +50,27 @@ DatasetType detectType(const geo::GeoDataset::Descriptor &ds
 {
     if (forcedType) { return *forcedType; }
 
-    if (ds.bands >= 3) { return DatasetType::ophoto; }
+    // RGB or RGBA image
+    if (ds.dataType == GDT_Byte && ((ds.bands == 3 || ds.bands == 4))) { 
+        return DatasetType::ophoto; }
+       
+    // grayscale or grayscale alpha image 
+    if (ds.dataType == GDT_Byte && ((ds.bands == 1 || ds.bands == 2))) { 
+        return DatasetType::ophoto; }
+        
+    // single band dataset with data type other than GDT_Byte, presumed DEM.
+    if (ds.dataType != GDT_Byte && ds.bands == 1) {
+        return DatasetType::dem; }
 
+    /* vector dataset */
     if (!ds.bands) { return DatasetType::vector; }
 
-    if (ds.bands != 1) {
-        LOGTHROW(err2, std::runtime_error)
+    LOGTHROW(err2, std::runtime_error)
             << "Cannot autodetect dataset type, unsupported number of bands ("
-            << ds.bands << ").";
-    }
-
-    if (ds.dataType == GDT_Byte) {
-        // probably monochromatic orthophoto
-        return DatasetType::ophoto;
-    }
-
-    // anything else is DEM
-    return DatasetType::dem;
+            << ds.bands << ") or data type (" << ds.dataType 
+            << ") combination.";
+   
+    return DatasetType::dem; // never reached
 }
 
 class PointGrid {

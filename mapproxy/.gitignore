@@ -11,3 +11,5 @@ tmp
 gdalwmscache
 .gdb_history
 output
+.kdev4/**
+*.kdev4
