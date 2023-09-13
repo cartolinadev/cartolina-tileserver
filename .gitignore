@@ -5,3 +5,6 @@
 *~
 DEADJOE
 *.sw*
+.cache
+mapproxy/compile_commands.json
+*.kate-swp

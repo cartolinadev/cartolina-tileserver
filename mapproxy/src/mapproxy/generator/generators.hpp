@@ -32,6 +32,7 @@
 #include <boost/multi_index/identity.hpp>
 #include <boost/multi_index/global_fun.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/asio.hpp>
 
 #include "../generator.hpp"
 

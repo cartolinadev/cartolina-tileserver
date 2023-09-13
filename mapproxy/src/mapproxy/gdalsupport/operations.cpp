@@ -50,8 +50,8 @@
 #include "../support/geo.hpp"
 #include "operations.hpp"
 
-namespace bio = boost::iostreams;
-namespace vr = vtslibs::registry;
+//namespace bio = boost::iostreams;
+//namespace vr = vtslibs::registry;
 
 namespace {
 
@@ -118,6 +118,9 @@ cv::Mat* warpImage(DatasetCache &cache, ManagedBuffer &mb
 
     /** Load data into matrix in shared memory. Expand paletted image into 3
      *  channels. (TODO: make #channels configurable?)
+     * 
+     * OP: to serve imagery in original color table mode we shall need to 
+     * extract palette and pass it back to the calling layer.
      */
     auto *tile(allocateMat(mb, size, dst.makeDataType(CV_8U, 3)));
     dst.readDataInto(CV_8U, *tile, 3);

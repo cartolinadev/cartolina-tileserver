@@ -396,7 +396,7 @@ public:
                     = GeneratorInterface::Interface::vts) const;
 
     // internals
-    struct Detail;
+    class Detail;
 
 private:
     std::shared_ptr<Detail> detail_;

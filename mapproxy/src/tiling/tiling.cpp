@@ -92,6 +92,7 @@ private:
 
     void prepareDataset() {
         int count(omp_get_num_threads());
+        LOG(info1) << "Building tile index with " << count << " threads.";
         gds_.reserve(count);
         for (int i(0); i < count; ++i) {
             gds_.emplace_back(geo::GeoDataset::open(dataset_));
@@ -149,7 +150,11 @@ void TreeWalker::buildWorld(const vts::LodRange &lodRange
 
         for (const auto &tr : tileRanges) {
             auto localRange(vts::shiftRange(tr, lod));
+        
             world_.set(lod, localRange, flags);
+        
+            LOG(info3) << "Added local range " 
+                << lod << "/" << localRange << " local range.";
         }
     }
 }

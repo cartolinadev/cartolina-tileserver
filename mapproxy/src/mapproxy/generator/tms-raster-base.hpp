@@ -36,7 +36,7 @@
 #include "../generator.hpp"
 
 namespace vre = vtslibs::registry::extensions;
-namespace vs = vtslibs::storage;
+//namespace vs = vtslibs::storage;
 
 namespace generator {
 

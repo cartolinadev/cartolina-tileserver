@@ -1,3 +1,9 @@
+vts-mapproxy (1.79cart23) stable; urgency=medium
+
+  * minor changes for the Cartolina23 project
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.com>  Wed, 13 Sep 2023 22:12:12 +0100
+
 vts-mapproxy (1.78) stable; urgency=medium
 
   * Fixed symlinking problem in Boost.Filesystem >= 1.74

@@ -737,7 +737,9 @@ void GdalWarper::Detail::killLeviathan()
         std::size_t mem;
 
         Usage(const utility::ProcStat &ps)
-            : pid(ps.pid), mem(ps.occupies())
+            // replaced ps.ocupies with ps.rss, does the job and ps.swap
+            // seemed to act up
+            : pid(ps.pid), mem(ps.rss)
         {
             // remove shared memory count; stop at zero
             if (mem > ps.shared) {
@@ -772,7 +774,7 @@ void GdalWarper::Detail::killLeviathan()
         // a leviathan found! kill it with fire
         LOG(info3)
             << "Killing large GDAL process " << u.pid
-            << " occupying " << (double(total) / 1024) << "MB of memory.";
+            << " occupying " << (u.mem / 1024) << "MB of memory.";
 
         try {
             auto fworkers(workers_.find(u.pid));

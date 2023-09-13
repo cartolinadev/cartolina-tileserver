@@ -28,7 +28,7 @@
 
 #include "mapproxy.hpp"
 
-namespace fs = boost::filesystem;
+//namespace fs = boost::filesystem;
 
 bool Mapproxy::supportsReferenceFrame(const std::string &referenceFrame)
 {

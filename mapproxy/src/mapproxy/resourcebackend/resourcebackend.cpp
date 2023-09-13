@@ -30,17 +30,21 @@
 #include "../resourcebackend.hpp"
 #include "factory.hpp"
 
-namespace po = boost::program_options;
+//namespace po = boost::program_options;
 
 namespace {
 
 typedef std::map<std::string, ResourceBackend::Factory::pointer> Registry;
-Registry registry;
+
+Registry & getRegistry() {
+    static Registry registry;
+    return registry;
+}
 
 ResourceBackend::Factory::pointer findFactory(const std::string &type)
 {
-    auto fregistry(registry.find(type));
-    if (fregistry == registry.end()) {
+    auto fregistry(getRegistry().find(type));
+    if (fregistry == getRegistry().end()) {
         LOGTHROW(err1, UnknownResourceBackend)
             << "Unknown resource backend <" << type << ">.";
     }
@@ -52,7 +56,7 @@ ResourceBackend::Factory::pointer findFactory(const std::string &type)
 void ResourceBackend::registerType(const std::string &type
                                    , const Factory::pointer &factory)
 {
-    registry.insert(Registry::value_type(type, factory));
+    getRegistry().insert(Registry::value_type(type, factory));
 }
 
 service::UnrecognizedParser::optional
@@ -72,7 +76,7 @@ void ResourceBackend::printConfig(std::ostream &os, const std::string &prefix
 std::vector<std::string> ResourceBackend::listTypes(const std::string &prefix)
 {
     std::vector<std::string> out;
-    for (const auto &ritem : registry) {
+    for (const auto &ritem : getRegistry()) {
         out.push_back(prefix + ritem.first);
     }
     return out;

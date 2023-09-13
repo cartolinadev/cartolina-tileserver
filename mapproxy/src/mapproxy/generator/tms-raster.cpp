@@ -37,6 +37,7 @@
 
 #include "imgproc/rastermask/cvmat.hpp"
 #include "imgproc/png.hpp"
+#include "imgproc/morphology.hpp"
 
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/as.hpp"
@@ -475,6 +476,9 @@ void TmsRaster::generateTileMask(const vts::TileId &tileId
                , sink));
 
     sink.checkAborted();
+
+    // erode
+    //imgproc::erode<uchar>(*mask);
 
     // serialize
     std::vector<unsigned char> buf;
