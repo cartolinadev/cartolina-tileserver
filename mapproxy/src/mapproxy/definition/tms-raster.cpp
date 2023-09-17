@@ -67,6 +67,10 @@ void parseDefinition(TmsRaster &def, const Json::Value &value)
         Json::get(def.transparent, value, "transparent");
     }
 
+    if (value.isMember("erodeMask")) {
+        Json::get(def.erodeMask, value,"erodeMask");
+    }
+
     Json::get(def.resampling, value, "resampling");
 
     def.parse(value);
@@ -81,6 +85,7 @@ void buildDefinition(Json::Value &value, const TmsRaster &def)
     value["format"] = boost::lexical_cast<std::string>(def.format);
 
     value["transparent"] = def.transparent;
+    value["erodeMask"] = def.erodeMask;
 
     if (def.resampling) {
         value["resampling"]

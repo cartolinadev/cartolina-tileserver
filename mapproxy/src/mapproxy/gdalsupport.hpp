@@ -78,7 +78,7 @@ public:
          *
          *  * mask:
          *  * maskNoOpt:
-         *        warps dataset and return its mask
+         *        warps dataset and returns its mask
          *        returns single channel 8bit mask
          *        mask: throws FullImage exception when all pixels are valid
          *

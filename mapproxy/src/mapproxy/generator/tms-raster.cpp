@@ -70,7 +70,7 @@ namespace {
 
 /** NOTICE: increment each time some data-related bug is fixed.
  */
-int GeneratorRevision(2);
+int GeneratorRevision(3);
 
 struct Factory : Generator::Factory {
     virtual Generator::pointer create(const Generator::Params &params)
@@ -477,8 +477,12 @@ void TmsRaster::generateTileMask(const vts::TileId &tileId
 
     sink.checkAborted();
 
-    // erode
-    //imgproc::erode<uchar>(*mask);
+    // optional mask erosion
+    if (definition_.erodeMask) {
+        // TODO: mask should be warped with 1px margin
+        // for correct handling of edge pixels
+        imgproc::erode<uchar>(*mask);
+    }
 
     // serialize
     std::vector<unsigned char> buf;

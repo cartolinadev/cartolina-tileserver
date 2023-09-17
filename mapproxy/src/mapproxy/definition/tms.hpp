@@ -98,9 +98,11 @@ struct TmsRaster : public TmsCommon {
     boost::optional<std::string> mask;
     RasterFormat format;
     bool transparent;
+    bool erodeMask;
     boost::optional<geo::GeoDataset::Resampling> resampling;
 
-    TmsRaster(): format(RasterFormat::jpg), transparent(false) {}
+    TmsRaster(): format(RasterFormat::jpg), transparent(false),
+        erodeMask(false) {}
 
     static constexpr char driverName[] = "tms-raster";
 
