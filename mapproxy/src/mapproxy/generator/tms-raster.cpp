@@ -109,7 +109,7 @@ TmsRaster::TmsRaster(const Params &params
     , complexDataset_(false)
     , maskTree_(ignoreNonexistent(absoluteDatasetRf(asPath(definition_.mask))))
 {
-    const auto indexPath(root() / "tileset.index");
+    //const auto indexPath(root() / "tileset.index");
     const auto deliveryIndexPath(root() / "delivery.index");
 
     if (changeEnforced()) {

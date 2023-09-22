@@ -51,8 +51,8 @@
 #include "./factory.hpp"
 
 namespace fs = boost::filesystem;
-namespace asio = boost::asio;
-namespace bmi = boost::multi_index;
+//namespace asio = boost::asio;
+//namespace bmi = boost::multi_index;
 namespace ba = boost::algorithm;
 
 namespace {

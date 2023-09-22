@@ -61,7 +61,7 @@ public:
 
 
 private:
-    virtual void prepare_impl(Arsenal &arsenal);
+    virtual void prepare_impl(Arsenal &);
 
     virtual vts::MapConfig mapConfig_impl(ResourceRoot root) const;
 
@@ -87,7 +87,7 @@ private:
 
     vr::BoundLayer boundLayer(ResourceRoot root) const;
 
-    mmapped::TileIndex index_;
+    std::unique_ptr<mmapped::TileIndex> index_;
 };
 
 } // namespace generator
