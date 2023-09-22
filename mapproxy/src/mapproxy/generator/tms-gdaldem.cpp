@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Melown Technologies SE
+ * Copyright (c) 2023 Ondrej Prochazka
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -24,42 +24,44 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <map>
+#include "tms-gdaldem.hpp"
 
-#include "../error.hpp"
 #include "factory.hpp"
-#include <iostream>
 
-namespace resource {
+#include "utility/premain.hpp"
+
+//namespace fs = boost::filesystem;
+
+namespace generator {
 
 namespace {
-typedef std::map<Resource::Generator
-                 , std::function<DefinitionBase::pointer()>> Registry;
 
-Registry& registry() {
-    static Registry registry;
-    return registry;
-}
+// upgrade whenever functionality is altered to warant invalidation
+// of the cached generator output
+// int generatorRevision(0);
+
+// register generator via pre-main static initialization
+
+struct Factory : Generator::Factory {
+    virtual Generator::pointer create(const Generator::Params &params)
+    {
+        return std::make_shared<TmsGdaldem>(params);
+    }
+
+private:
+    static utility::PreMain register_;
+};
+
+utility::PreMain Factory::register_([]()
+{
+    Generator::registerType<TmsGdaldem>(std::make_shared<Factory>());
+});
+
 
 } // namespace
 
-DefinitionBase::pointer definition(const Resource::Generator &type)
-{
-    const auto &r(registry());
-    auto fregistry(r.find(type));
-    if (fregistry == r.end()) {
-        LOGTHROW(err1, UnknownGenerator)
-            << "Unknown generator type <" << type << ">.";
-    }
-    return fregistry->second();
-}
 
-void registerDefinition(const Resource::Generator &type
-                        , const std::function<DefinitionBase::pointer()>
-                        &factory)
-{
-    std::cout << "Registering driver type " << type << ".\n";
-    registry().insert(Registry::value_type(type, factory));
-}
 
-} // namespace resource
+
+
+} // namespace generator

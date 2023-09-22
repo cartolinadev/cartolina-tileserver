@@ -107,6 +107,16 @@ private:
     unsigned int size_;
     const char *data_;
     std::size_t dataSize_;
+
+    // -- silencing clang noises starts here --
+    template<typename CharT, typename Traits>
+    friend inline std::basic_ostream<CharT, Traits>&
+    operator<<(std::basic_ostream<CharT, Traits> &os, const QTree::Node &n);
+
+    template<typename CharT, typename Traits>
+    friend inline std::basic_ostream<CharT, Traits>&
+    operator<<(std::basic_ostream<CharT, Traits> &os, const QTree::NodeValue &nv);
+    // -- silence clang noises ends here --
 };
 
 struct QTree::Node {

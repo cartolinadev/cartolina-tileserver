@@ -39,6 +39,7 @@ set(mapproxy-core_SOURCES
   definition/tms-raster-solid.cpp
 
   definition/tms-raster.cpp
+  definition/tms-gdaldem.cpp
   definition/tms-raster-remote.cpp
   definition/tms-bing.cpp
   definition/tms-windyty.cpp
@@ -121,6 +122,7 @@ define_module(BINARY mapproxy
   )
 
 set(mapproxy_SOURCES
+
   resourcebackend.hpp
   resourcebackend/resourcebackend.cpp
   resourcebackend/factory.hpp
@@ -138,6 +140,7 @@ set(mapproxy_SOURCES
   # bound layers
   generator/tms-raster-base.hpp generator/tms-raster-base.cpp
   generator/tms-raster.hpp generator/tms-raster.cpp
+  generator/tms-gdaldem.hpp generator/tms-gdaldem.cpp
   generator/tms-raster-remote.hpp generator/tms-raster-remote.cpp
   generator/tms-bing.hpp generator/tms-bing.cpp
   generator/tms-windyty.hpp generator/tms-windyty.cpp

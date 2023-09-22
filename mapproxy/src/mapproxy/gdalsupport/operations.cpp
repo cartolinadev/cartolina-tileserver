@@ -220,7 +220,8 @@ cv::Mat* warpValueMinMax(DatasetCache &cache, ManagedBuffer &mb
 #endif
     warpOptions.workingDataType = GDT_Float32;
 
-    auto wri(src.warpInto(dst, resampling, warpOptions));
+    //auto wri(src.warpInto(dst, resampling, warpOptions));
+    src.warpInto(dst, resampling, warpOptions);
     minSrc.warpInto(minDst, geo::GeoDataset::Resampling::minimum
                     , warpOptions);
     maxSrc.warpInto(maxDst, geo::GeoDataset::Resampling::maximum

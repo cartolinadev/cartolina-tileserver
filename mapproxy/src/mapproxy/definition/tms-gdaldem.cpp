@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Melown Technologies SE
+ * Copyright (c) 2023 Ondrej Prochazka
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -24,42 +24,32 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <map>
+#include <boost/lexical_cast.hpp>
+#include <boost/utility/in_place_factory.hpp>
 
-#include "../error.hpp"
+#include "utility/premain.hpp"
+
+#include "jsoncpp/json.hpp"
+#include "jsoncpp/as.hpp"
+
+#include "tms.hpp"
 #include "factory.hpp"
 #include <iostream>
 
 namespace resource {
 
-namespace {
-typedef std::map<Resource::Generator
-                 , std::function<DefinitionBase::pointer()>> Registry;
+constexpr char TmsGdaldem::driverName[];
 
-Registry& registry() {
-    static Registry registry;
-    return registry;
+
+namespace { utility::PreMain mapproxy_regdef_TmsGdaldem ([]() {
+
+    std::cout << "Here.\n";
+
+    registerDefinition<TmsGdaldem>(); });
+
 }
 
-} // namespace
+//MAPPROXY_DEFINITION_REGISTER(TmsGdaldem)
 
-DefinitionBase::pointer definition(const Resource::Generator &type)
-{
-    const auto &r(registry());
-    auto fregistry(r.find(type));
-    if (fregistry == r.end()) {
-        LOGTHROW(err1, UnknownGenerator)
-            << "Unknown generator type <" << type << ">.";
-    }
-    return fregistry->second();
 }
 
-void registerDefinition(const Resource::Generator &type
-                        , const std::function<DefinitionBase::pointer()>
-                        &factory)
-{
-    std::cout << "Registering driver type " << type << ".\n";
-    registry().insert(Registry::value_type(type, factory));
-}
-
-} // namespace resource

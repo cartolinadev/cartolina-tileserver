@@ -45,8 +45,8 @@
 #include "generators.hpp"
 #include "factory.hpp"
 
-namespace fs = boost::filesystem;
-namespace ba = boost::algorithm;
+//namespace fs = boost::filesystem;
+//namespace ba = boost::algorithm;
 
 namespace {
 

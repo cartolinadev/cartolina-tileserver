@@ -7,6 +7,9 @@ set(BUILDSYS_DEFAULT_CUSTOMER_NAME oss)
 set(BUILDSYS_CPP_STANDARD 17)
 include(buildsys/cmake/buildsys.cmake)
 
+# for llvm
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 enable_OpenMP()
 
 find_package(Boost 1.46 REQUIRED

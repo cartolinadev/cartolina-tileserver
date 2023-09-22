@@ -113,6 +113,26 @@ protected:
     virtual bool frozenCredits_impl() const { return false; }
 };
 
+struct TmsGdaldem : public TmsCommon {
+    std::string dataset;
+    geo::GeoDataset::DemProcessing processing;
+    std::vector<std::string> processingOptions;
+    RasterFormat format;
+    bool erodeMask;
+    geo::GeoDataset::Resampling resampling;
+
+    TmsGdaldem(): format(RasterFormat::jpg), erodeMask(false),
+        resampling(geo::GeoDataset::Resampling::dem) {}
+
+    static constexpr char driverName[] = "tms-gdaldem";
+
+protected:
+    virtual void from_impl(const Json::Value &value);
+    virtual void to_impl(Json::Value &value) const;
+    virtual Changed changed_impl(const DefinitionBase &other) const;
+    virtual bool frozenCredits_impl() const { return false; }
+};
+
 struct TmsRasterRemote : public TmsCommon {
     std::string remoteUrl;
     boost::optional<boost::filesystem::path> mask;
@@ -127,6 +147,7 @@ private:
     virtual Changed changed_impl(const DefinitionBase &other) const;
     virtual bool frozenCredits_impl() const { return false; }
 };
+
 
 struct TmsBing : public TmsCommon {
     std::string metadataUrl;
