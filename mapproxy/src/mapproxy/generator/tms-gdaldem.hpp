@@ -63,13 +63,8 @@ public:
 private:
     virtual void prepare_impl(Arsenal &);
 
-    virtual vts::MapConfig mapConfig_impl(ResourceRoot root) const;
 
-    virtual Task generateVtsFile_impl(const FileInfo &fileInfo
-                                      , Sink &sink) const;
-
-
-    void generateTileImage(const vts::TileId &tileId
+    virtual void generateTileImage(const vts::TileId &tileId
                                    , const Sink::FileInfo &fi
                                    , RasterFormat format
                                    , Sink &sink, Arsenal &arsenal

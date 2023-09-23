@@ -346,11 +346,11 @@ Generator::Task TmsRaster::generateVtsFile_impl(const FileInfo &fileInfo
     case TmsFileInfo::Type::mask:
         if (maskTree_) {
             return [=](Sink &sink, Arsenal &arsenal)  {
-                generateTileMaskFromTree(fi.tileId, fi, sink, arsenal);
+                generateTileMaskFromTree_impl(fi.tileId, fi, sink, arsenal);
             };
         } else {
             return [=](Sink &sink, Arsenal &arsenal)  {
-                generateTileMask(fi.tileId, fi, sink, arsenal);
+                generateTileMask_impl(fi.tileId, fi, sink, arsenal);
             };
         }
 
@@ -442,6 +442,19 @@ void TmsRaster::generateTileImage(const vts::TileId &tileId
 }
 
 void TmsRaster::generateTileMask(const vts::TileId &tileId
+                                , const TmsFileInfo &fi
+                                , Sink &sink
+                                , Arsenal & arsenal) const {
+
+    if (maskTree_) {
+        generateTileMaskFromTree_impl(tileId, fi, sink, arsenal);
+    } else {
+        generateTileMask_impl(tileId, fi, sink, arsenal);
+    }
+}
+
+
+void TmsRaster::generateTileMask_impl(const vts::TileId &tileId
                                  , const TmsFileInfo &fi
                                  , Sink &sink
                                  , Arsenal &arsenal) const
@@ -495,7 +508,7 @@ void TmsRaster::generateTileMask(const vts::TileId &tileId
     sink.content(buf, fi.sinkFileInfo().setMaxAge(ds.maxAge));
 }
 
-void TmsRaster::generateTileMaskFromTree(const vts::TileId &tileId
+void TmsRaster::generateTileMaskFromTree_impl(const vts::TileId &tileId
                                          , const TmsFileInfo &fi
                                          , Sink &sink
                                          , Arsenal&) const

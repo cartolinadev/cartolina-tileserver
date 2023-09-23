@@ -105,19 +105,24 @@ private:
                                    , const ImageFlags &imageFlags
                                    = ImageFlags()) const;
 
-    void generateTileMask(const vts::TileId &tileId
+
+    virtual void generateMetatile(const vts::TileId &tileId
                           , const TmsFileInfo &fi
                           , Sink &sink, Arsenal &arsenal) const;
 
-    void generateTileMaskFromTree(const vts::TileId &tileId
+
+    virtual void generateTileMask(const vts::TileId &tileId
+                          , const TmsFileInfo &fi
+                          , Sink &sink, Arsenal &arsenal) const;
+
+    void generateTileMask_impl(const vts::TileId &tileId
+                          , const TmsFileInfo &fi
+                          , Sink &sink, Arsenal &arsenal) const;
+
+    void generateTileMaskFromTree_impl(const vts::TileId &tileId
                                   , const TmsFileInfo &fi
                                   , Sink &sink
                                   , Arsenal&) const;
-
-    void generateMetatile(const vts::TileId &tileId
-                          , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const;
-
     DatasetDesc dataset() const;
 
     RasterFormat format() const;
@@ -125,6 +130,8 @@ private:
     bool transparent() const;
 
     bool hasMask() const;
+
+    virtual bool hasMetatiles() const { return hasMetatiles_; }
 
     void update(vr::BoundLayer &bl) const;
 

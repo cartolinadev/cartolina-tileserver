@@ -207,4 +207,100 @@ Generator::Task TmsRasterBase
     return {};
 }
 
+vts::MapConfig TmsRasterBase::mapConfig_impl(ResourceRoot root)
+    const
+{
+    const auto &res(resource());
+
+    vts::MapConfig mapConfig;
+    mapConfig.referenceFrame = *res.referenceFrame;
+
+    // this is Tiled service: we have bound layer only; use remote definition
+    mapConfig.boundLayers.add
+        (vr::BoundLayer
+         (res.id.fullId()
+          , prependRoot(std::string("boundlayer.json"), resource(), root)));
+
+    return mapConfig;
+}
+
+Generator::Task TmsRasterBase::generateVtsFile_impl(const FileInfo &fileInfo
+                                                , Sink &sink) const
+{
+    TmsFileInfo fi(fileInfo);
+
+    // check for valid tileId
+    switch (fi.type) {
+    case TmsFileInfo::Type::image:
+    case TmsFileInfo::Type::mask:
+        if (!checkRanges(resource(), fi.tileId)) {
+            sink.error(utility::makeError<NotFound>
+                        ("TileId outside of configured range."));
+            return {};
+        }
+        break;
+
+    case TmsFileInfo::Type::metatile:
+        if (hasMetatiles()) {
+            sink.error(utility::makeError<NotFound>
+                        ("This dataset doesn't provide metatiles."));
+            return {};
+        }
+        if (!checkRanges(resource(), fi.tileId, RangeType::lod)) {
+            sink.error(utility::makeError<NotFound>
+                        ("TileId outside of configured range."));
+            return {};
+        }
+        break;
+
+    default: break;
+    }
+
+    // beef
+    switch (fi.type) {
+    case TmsFileInfo::Type::unknown:
+        sink.error(utility::makeError<NotFound>("Unrecognized filename."));
+        break;
+
+    case TmsFileInfo::Type::config: {
+        std::ostringstream os;
+        mapConfig(os, ResourceRoot::none);
+        sink.content(os.str(), fi.sinkFileInfo());
+        break;
+    };
+
+    case TmsFileInfo::Type::definition: {
+        std::ostringstream os;
+        vr::saveBoundLayer(os, boundLayer(ResourceRoot::none));
+        sink.content(os.str(), fi.sinkFileInfo());
+        break;
+    }
+
+    case TmsFileInfo::Type::support:
+        sink.content(fi.support->data, fi.support->size
+                      , fi.sinkFileInfo(), false);
+        break;
+
+    case TmsFileInfo::Type::image: {
+        return[=](Sink &sink, Arsenal &arsenal) {
+            generateTileImage(fi.tileId, fi.sinkFileInfo(), fi.format
+                              , sink, arsenal, ImageFlags());
+        };
+    }
+
+    case TmsFileInfo::Type::mask:
+        return [=](Sink &sink, Arsenal & arsenal) {
+            generateTileMask(fi.tileId, fi, sink, arsenal);
+        };
+
+    case TmsFileInfo::Type::metatile:
+        return [=](Sink &sink, Arsenal &arsenal) {
+            generateMetatile(fi.tileId, fi, sink, arsenal);
+        };
+    }
+
+    return {};
+}
+
+
 } // namespace generator

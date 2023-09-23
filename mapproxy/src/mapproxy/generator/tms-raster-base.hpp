@@ -36,6 +36,7 @@
 #include "../generator.hpp"
 
 namespace vre = vtslibs::registry::extensions;
+namespace vr = vtslibs::registry;
 //namespace vs = vtslibs::storage;
 
 namespace generator {
@@ -66,12 +67,27 @@ protected:
                                    , const ImageFlags &imageFlags
                                    = ImageFlags()) const = 0;
 
+    virtual void generateMetatile(const vts::TileId &tileId
+                          , const TmsFileInfo &fi
+                          , Sink &sink, Arsenal &arsenal) const = 0;
+
+    virtual void generateTileMask(const vts::TileId &tileId
+                          , const TmsFileInfo &fi
+                          , Sink &sink, Arsenal &arsenal) const = 0;
+
+    virtual vr::BoundLayer boundLayer(ResourceRoot root) const = 0;
+
 private:
+
+    virtual vts::MapConfig mapConfig_impl(ResourceRoot root) const;
+
     virtual Task generateFile_impl(const FileInfo &fileInfo
                                    , Sink &sink) const;
 
     virtual Task generateVtsFile_impl(const FileInfo &fileInfo
-                                      , Sink &sink) const = 0;
+                                      , Sink &sink) const;
+
+    virtual bool hasMetatiles() const { return false; };
 
     Task wmtsInterface(const FileInfo &fileInfo, Sink &sink) const;
 

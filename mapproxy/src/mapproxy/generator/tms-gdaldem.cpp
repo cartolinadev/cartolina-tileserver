@@ -34,7 +34,7 @@
 
 #include "utility/premain.hpp"
 #include "utility/path.hpp"
-
+#include "utility/raise.hpp"
 
 namespace fs = boost::filesystem;
 
@@ -67,8 +67,7 @@ utility::PreMain Factory::register_([]()
 } // namespace
 
 
-// Generator::TmsGdaldem implementation follows
-
+// Generator::TmsGdaldem
 
 TmsGdaldem::TmsGdaldem(const Params &params
     , const boost::optional<RasterFormat> &format)
@@ -77,17 +76,20 @@ TmsGdaldem::TmsGdaldem(const Params &params
 
     const auto deliveryIndexPath(root() / "delivery.index");
 
+    // compulsory check for every driver
     if (changeEnforced()) {
         LOG(info1) << "Generator for <" << id() << "> not ready.";
         return;
     }
 
+    // delivery index is all we need
     if (fs::exists(deliveryIndexPath)) {
         index_ = std::make_unique<mmapped::TileIndex>(deliveryIndexPath);
         makeReady();
         return;
     }
 
+    // default
     LOG(info1) << "Generator for <" << id() << "> not ready.";
     return;
 }
@@ -97,10 +99,10 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
 
     LOG(info2) << "Preparing <" << id() << ">.";
 
-    // try to open
+    // probe
     geo::GeoDataset::open(absoluteDataset(definition_.dataset + "/dem"));
 
-    // build delivery inddex
+    // build delivery index
     const auto &r(resource());
 
     vts::TileIndex index;
@@ -117,6 +119,5 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
     // done
     return;
 }
-
 
 } // namespace generator
