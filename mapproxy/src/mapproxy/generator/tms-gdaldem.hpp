@@ -61,26 +61,36 @@ public:
 
 
 private:
-    virtual void prepare_impl(Arsenal &);
+    void prepare_impl(Arsenal &) override;
 
-
-    virtual void generateTileImage(const vts::TileId &tileId
+    void generateTileImage(const vts::TileId &tileId
                                    , const Sink::FileInfo &fi
                                    , RasterFormat format
                                    , Sink &sink, Arsenal &arsenal
                                    , const ImageFlags &imageFlags
-                                   = ImageFlags()) const;
+                                   = ImageFlags()) const override;
 
     void generateTileMask(const vts::TileId &tileId
                           , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const;
+                          , Sink &sink, Arsenal &arsenal) const override;
 
 
     void generateMetatile(const vts::TileId &tileId
                           , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const;
+                          , Sink &sink, Arsenal &arsenal) const override;
 
-    vr::BoundLayer boundLayer(ResourceRoot root) const;
+    bool hasMetatiles() const override { return true; };
+
+    bool hasMask() const override { return true; };
+
+    bool transparent() const override;
+
+    RasterFormat format() const override;
+
+    int generatorRevision() const override;
+
+    boost::any boundLayerOptions() const override;
+
 
     std::unique_ptr<mmapped::TileIndex> index_;
 };

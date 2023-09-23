@@ -38,13 +38,16 @@
 
 namespace fs = boost::filesystem;
 
+typedef geo::GeoDataset::DemProcessing Processing;
+
+
 namespace generator {
 
 namespace {
 
 // upgrade whenever functionality is altered to warant invalidation
 // of the cached generator output
-// int generatorRevision(0);
+int generatorRevision_(0);
 
 // register generator via pre-main static initialization
 
@@ -66,6 +69,12 @@ utility::PreMain Factory::register_([]()
 
 } // namespace
 
+
+// Generator::Detail::TmsGdaldemMFB
+
+detail::TmsGdaldemMFB::TmsGdaldemMFB(const Generator::Params & params)
+    : definition_(params.resource.definition<Definition>()) {
+}
 
 // Generator::TmsGdaldem
 
@@ -118,6 +127,33 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
 
     // done
     return;
+}
+
+bool TmsGdaldem::transparent() const {
+
+    auto & poptions(definition_.processingOptions);
+
+    // the only known case when geo::demProcessing output is transparent
+    if (definition_.processing == Processing::color_relief
+        && std::find(poptions.begin(), poptions.end(), "-alpha") != poptions.begin()) {
+        return true;
+    }
+
+    return false;
+}
+
+RasterFormat TmsGdaldem::format() const {
+    return transparent() ? RasterFormat::png : definition_.format;
+}
+
+
+boost::any TmsGdaldem::boundLayerOptions() const {
+    return definition_.options;
+}
+
+
+int TmsGdaldem::generatorRevision() const {
+    return generatorRevision_;
 }
 
 } // namespace generator

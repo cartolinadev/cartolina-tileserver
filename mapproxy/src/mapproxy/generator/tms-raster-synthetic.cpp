@@ -56,7 +56,7 @@
 
 #include "browser2d/index.html.hpp"
 
-namespace fs = boost::filesystem;
+//namespace fs = boost::filesystem;
 namespace bgil = boost::gil;
 namespace vr = vtslibs::registry;
 

@@ -87,7 +87,9 @@ private:
 
     vr::BoundLayer boundLayer(ResourceRoot root) const;
 
-    bool hasMask() const;
+    RasterFormat format() const { return definition_.format; }
+
+    bool hasMask() const { return true; };
 
     bool hasMetatiles_;
 };

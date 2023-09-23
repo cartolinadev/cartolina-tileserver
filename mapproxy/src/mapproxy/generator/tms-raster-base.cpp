@@ -24,16 +24,19 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mapproxy/resource.hpp"
 #include "utility/raise.hpp"
 #include "utility/format.hpp"
 #include "utility/httpquery.hpp"
 
 #include "../support/wmts.hpp"
+#include "../support/revision.hpp"
 
 #include "files.hpp"
 
 #include "tms-raster-base.hpp"
 #include "providers.hpp"
+#include <boost/optional/detail/optional_swap.hpp>
 
 namespace uq = utility::query;
 
@@ -82,9 +85,8 @@ private:
 
 TmsRasterBase
 ::TmsRasterBase(const Params &params
-                , const boost::optional<RasterFormat> &format)
+    , const boost::optional<RasterFormat> format)
     : Generator(params, wmtsSupport(params, format))
-    , format_(format ? *format : RasterFormat())
     , wmts_(properties().isSupported(GeneratorInterface::Interface::wmts)
             ? params.resource.referenceFrame->findExtension<vre::Wmts>()
             : nullptr)
@@ -135,7 +137,7 @@ wmts::WmtsResources TmsRasterBase::wmtsResources(const WmtsFileInfo &fileInfo)
     resources.layers.emplace_back(resource());
     auto &layer(resources.layers.back());
 
-    layer.format = format_;
+    layer.format = format();
 
     // build root path
     if (introspection) {
@@ -301,6 +303,47 @@ Generator::Task TmsRasterBase::generateVtsFile_impl(const FileInfo &fileInfo
 
     return {};
 }
+
+vr::BoundLayer TmsRasterBase::boundLayer(ResourceRoot root) const
+{
+    const auto &res(resource());
+
+    vr::BoundLayer bl;
+    bl.id = res.id.fullId();
+    bl.numericId = 0; // no numeric ID
+    bl.type = vr::BoundLayer::Type::raster;
+
+    // build url
+    bl.url = prependRoot
+        (utility::format("{lod}-{x}-{y}.%s?gr=%d%s"
+                         , format(), RevisionWrapper(res.revision, "&"))
+         , resource(), root);
+    if (hasMask()) {
+        bl.maskUrl = prependRoot
+            (utility::format("{lod}-{x}-{y}.mask?gr=%d%s"
+                             , RevisionWrapper(res.revision, "&"))
+             , resource(), root);
+        if (hasMetatiles()) {
+            const auto fname
+                (utility::format("{lod}-{x}-{y}.meta?gr=%d%s"
+                                 , generatorRevision()
+                                 , RevisionWrapper(res.revision, "&")));
+
+            bl.metaUrl = prependRoot(fname, resource(), root);
+        }
+    }
+
+    bl.lodRange = res.lodRange;
+    bl.tileRange = res.tileRange;
+    bl.credits = asInlineCredits(res);
+    bl.isTransparent = transparent();
+
+    bl.options = boundLayerOptions();
+
+    // done
+    return bl;
+}
+
 
 
 } // namespace generator

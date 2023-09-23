@@ -44,8 +44,8 @@ namespace generator {
 class TmsRasterBase : public Generator {
 public:
     TmsRasterBase(const Params &params
-                  , const boost::optional<RasterFormat> &format
-                  = boost::none);
+        , const boost::optional<RasterFormat> format = boost::none
+    );
 
 protected:
     struct ImageFlags {
@@ -75,7 +75,7 @@ protected:
                           , const TmsFileInfo &fi
                           , Sink &sink, Arsenal &arsenal) const = 0;
 
-    virtual vr::BoundLayer boundLayer(ResourceRoot root) const = 0;
+    virtual vr::BoundLayer boundLayer(ResourceRoot root) const;
 
 private:
 
@@ -89,6 +89,16 @@ private:
 
     virtual bool hasMetatiles() const { return false; };
 
+    virtual bool hasMask() const { return true; };
+
+    virtual bool transparent() const { return false; };
+
+    virtual RasterFormat format() const = 0;
+
+    virtual int generatorRevision() const { return 0; }
+
+    virtual boost::any boundLayerOptions() const { return {}; };
+
     Task wmtsInterface(const FileInfo &fileInfo, Sink &sink) const;
 
     wmts::WmtsResources wmtsResources(const WmtsFileInfo &fileInfo) const;
@@ -97,7 +107,6 @@ private:
 
     const vre::Wmts& getWmts() const;
 
-    RasterFormat format_;
     const vre::Wmts *wmts_;
 
     friend class AtlasProvider;
