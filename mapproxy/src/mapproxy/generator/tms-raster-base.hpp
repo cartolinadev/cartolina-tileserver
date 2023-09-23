@@ -34,6 +34,8 @@
 
 #include "../support/wmts.hpp"
 #include "../generator.hpp"
+#include "../support/mmapped/tileindex.hpp"
+
 
 namespace vre = vtslibs::registry::extensions;
 namespace vr = vtslibs::registry;
@@ -69,7 +71,7 @@ protected:
 
     virtual void generateMetatile(const vts::TileId &tileId
                           , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const = 0;
+                          , Sink &sink, Arsenal &arsenal) const;
 
     virtual void generateTileMask(const vts::TileId &tileId
                           , const TmsFileInfo &fi
@@ -98,6 +100,9 @@ private:
     virtual int generatorRevision() const { return 0; }
 
     virtual boost::any boundLayerOptions() const { return {}; };
+
+    virtual const mmapped::TileIndex *tileIndex() const {
+        return nullptr; }
 
     Task wmtsInterface(const FileInfo &fileInfo, Sink &sink) const;
 

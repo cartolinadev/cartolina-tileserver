@@ -25,12 +25,19 @@
  */
 
 #include "mapproxy/resource.hpp"
+
+#include "imgproc/png.hpp"
+#include "imgproc/morphology.hpp"
+
 #include "utility/raise.hpp"
 #include "utility/format.hpp"
 #include "utility/httpquery.hpp"
 
 #include "../support/wmts.hpp"
 #include "../support/revision.hpp"
+#include "../support/mmapped/qtree-rasterize.hpp"
+#include "../support/metatile.hpp"
+
 
 #include "files.hpp"
 
@@ -39,6 +46,7 @@
 #include <boost/optional/detail/optional_swap.hpp>
 
 namespace uq = utility::query;
+namespace bgil = boost::gil;
 
 namespace generator {
 
@@ -342,6 +350,79 @@ vr::BoundLayer TmsRasterBase::boundLayer(ResourceRoot root) const
 
     // done
     return bl;
+}
+
+namespace Constants {
+    const unsigned int RasterMetatileBinaryOrder(8);
+    const math::Size2 RasterMetatileSize(1 << RasterMetatileBinaryOrder
+                                         , 1 << RasterMetatileBinaryOrder);
+}
+
+namespace MetaFlags {
+    constexpr std::uint8_t watertight(0xc0);
+    constexpr std::uint8_t available(0x80);
+}
+
+
+namespace {
+
+void meta2d(const mmapped::TileIndex &tileIndex, const vts::TileId &tileId
+    , const TmsFileInfo &fi, Sink &sink)
+{
+    bgil::gray8_image_t out(Constants::RasterMetatileSize.width
+                            , Constants::RasterMetatileSize.height
+                            , bgil::gray8_pixel_t(0x00), 0);
+    auto outView(view(out));
+
+    if (const auto *tree = tileIndex.tree(tileId.lod)) {
+        const auto parentId
+            (vts::parent(tileId, Constants::RasterMetatileBinaryOrder));
+
+        rasterize(*tree, parentId.lod, parentId.x, parentId.y
+                  , outView, [&](vts::QTree::value_type flags) -> std::uint8_t
+        {
+            std::uint8_t out(0);
+
+            if (flags & vts::TileIndex::Flag::mesh) {
+                out |= MetaFlags::available;
+
+                if (flags & vts::TileIndex::Flag::watertight) {
+                    out |= MetaFlags::watertight;
+                }
+            }
+
+            return out;
+        });
+    }
+
+    sink.content(imgproc::png::serialize(out, 9), fi.sinkFileInfo());
+}
+
+} // namespace
+
+void TmsRasterBase::generateMetatile(const vts::TileId &tileId
+    , const TmsFileInfo &fi , Sink &sink, Arsenal &) const {
+
+    sink.checkAborted();
+
+    auto blocks(metatileBlocks
+        (resource(), tileId, Constants::RasterMetatileBinaryOrder));
+
+    if (blocks.empty()) {
+        sink.error(utility::makeError<NotFound>
+                    ("Metatile completely outside of configured range."));
+        return;
+    }
+
+    if (!tileIndex()) {
+        LOGTHROW(err4, std::runtime_error)
+            << "Subclass needs to return valid tile index for default " <<
+            "implementation of generate metatile - fix your subclass.";
+    }
+
+    // render tileindex
+    meta2d(*tileIndex(), tileId, fi, sink);
+    return;
 }
 
 

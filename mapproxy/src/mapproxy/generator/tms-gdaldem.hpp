@@ -28,7 +28,6 @@
 #define mapproxy_generator_tms_gdaldem_hpp_included_
 
 #include "geo/geodataset.hpp"
-#include "../support/mmapped/tileindex.hpp"
 
 #include "../definition/tms.hpp"
 
@@ -74,11 +73,6 @@ private:
                           , const TmsFileInfo &fi
                           , Sink &sink, Arsenal &arsenal) const override;
 
-
-    void generateMetatile(const vts::TileId &tileId
-                          , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const override;
-
     bool hasMetatiles() const override { return true; };
 
     bool hasMask() const override { return true; };
@@ -91,6 +85,8 @@ private:
 
     boost::any boundLayerOptions() const override;
 
+    const mmapped::TileIndex *tileIndex() const override
+    { return index_.get(); }
 
     std::unique_ptr<mmapped::TileIndex> index_;
 };
