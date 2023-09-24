@@ -62,6 +62,19 @@ private:
     cv::Mat *response_;
 };
 
+/** raster with dem post processing */
+class ShRasterWP: public ShRaster {
+public:
+    ShRasterWP(const GdalWarper::RasterRequestWP &other
+        , ManagedBuffer &sm, ShRequestBase *owner);
+
+    ~ShRasterWP() {}
+
+private:
+    geo::GeoDataset::DemProcessing processing;
+    StringVector processingOptions;
+};
+
 class ShHeightCodeConfig {
 public:
     ShHeightCodeConfig(const geo::heightcoding::Config &config

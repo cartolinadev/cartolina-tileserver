@@ -117,4 +117,6 @@ struct ConstBlock {
     {}
 };
 
+
+
 #endif // mapproxy_gdalsupport_types_hpp_included_

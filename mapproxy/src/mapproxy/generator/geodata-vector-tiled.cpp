@@ -48,7 +48,7 @@
 #include "factory.hpp"
 #include "metatile.hpp"
 
-namespace ba = boost::algorithm;
+//namespace ba = boost::algorithm;
 
 namespace vr = vtslibs::registry;
 namespace fs = boost::filesystem;

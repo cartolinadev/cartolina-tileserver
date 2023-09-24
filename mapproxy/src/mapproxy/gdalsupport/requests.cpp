@@ -79,6 +79,18 @@ void ShRaster::response(bi::interprocess_mutex &mutex, cv::Mat *response)
     owner_->done();
 }
 
+ShRasterWP::ShRasterWP(const GdalWarper::RasterRequestWP &other
+    , ManagedBuffer &sm, ShRequestBase *owner)
+    : ShRaster(other, sm, owner)
+    , processing(other.processing) {
+
+    for (const auto &option: other.processingOptions) {
+        processingOptions.emplace_back(option);
+    }
+
+}
+
+
 namespace {
 
 void copyLayers(boost::optional<StringVector> &dst

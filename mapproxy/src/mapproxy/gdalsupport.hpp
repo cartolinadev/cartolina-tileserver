@@ -112,10 +112,14 @@ public:
          *
          *       returns 3-channel double matrix with current value, minimum
          *       value and maximum value in each pixel
+         *
+         * * margin
+         *      warps dataset with 1 pixel margin, to allow seamless
+         *      processsing with 3x3 filtering kernels
          */
         enum class Operation {
             image, imageNoOpt, mask, maskNoOpt, detailMask, dem
-            , demOptimal, valueMinMax
+            , demOptimal, valueMinMax, margin
         };
 
         Operation operation;
@@ -144,6 +148,28 @@ public:
         RasterRequest& setNodata(const boost::optional<double> &value) {
             nodata = value; return *this;
         }
+    };
+
+    /** Raster request with DEM post processing */
+    class RasterRequestWP : public RasterRequest {
+    public:
+        geo::GeoDataset::DemProcessing processing;
+        std::vector<std::string> processingOptions;
+
+        RasterRequestWP(const std::string &dataset
+                        , const geo::SrsDefinition & srs
+                        , const math::Extents2 & extents
+                        , const math::Size2 & size
+                        , geo::GeoDataset::DemProcessing processing
+                        , const std::vector<std::string> & processingOptions
+                        , geo::GeoDataset::Resampling resampling
+                            = geo::GeoDataset::Resampling::dem
+                        , const boost::optional<std::string> & mask
+                            = boost::none)
+            : RasterRequest(Operation::margin, dataset, srs, extents,
+                        size, resampling, mask)
+            , processing(processing), processingOptions(processingOptions)
+        {}
     };
 
     Raster warp(const RasterRequest &request, Aborter &sink);
@@ -190,7 +216,7 @@ public:
 
     void stat(std::ostream &os) const;
 
-    struct Detail;
+    class Detail;
 
 private:
     std::shared_ptr<Detail> detail_;
