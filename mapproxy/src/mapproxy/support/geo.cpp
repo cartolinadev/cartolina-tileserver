@@ -33,6 +33,8 @@
 #include "geo.hpp"
 
 namespace ublas = boost::numeric::ublas;
+namespace vts = vtslibs::vts;
+
 
 double tileCircumference(const math::Extents2 &extents
                          , const geo::SrsDefinition &srs
@@ -92,6 +94,15 @@ math::Extents2 extentsPlusHalfPixel(const math::Extents2 &extents
     const math::Point2 hpx(px.width / 2, px.height / 2);
     return math::Extents2(extents.ll - hpx, extents.ur + hpx);
 }
+
+math::Extents2 extentsPlusPixel(const math::Extents2 &extents
+                                    , const math::Size2 &pixels)
+{
+    auto es(math::size(extents));
+    const math::Point2 px(es.width / pixels.width, es.height / pixels.height);
+    return math::Extents2(extents.ll - px, extents.ur + px);
+}
+
 
 ::OGRSpatialReference localTm(const vr::ReferenceFrame &rf
                               , const geo::SrsDefinition &srsDef

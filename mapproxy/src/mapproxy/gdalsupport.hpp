@@ -113,13 +113,12 @@ public:
          *       returns 3-channel double matrix with current value, minimum
          *       value and maximum value in each pixel
          *
-         * * margin
-         *      warps dataset with 1 pixel margin, to allow seamless
-         *      processsing with 3x3 filtering kernels
+         * * none:
+         *       placeholder for a derived class
          */
         enum class Operation {
             image, imageNoOpt, mask, maskNoOpt, detailMask, dem
-            , demOptimal, valueMinMax, margin
+            , demOptimal, valueMinMax, none
         };
 
         Operation operation;
@@ -150,6 +149,8 @@ public:
         }
     };
 
+    Raster warp(const RasterRequest &request, Aborter &sink);
+
     /** Raster request with DEM post processing */
     class RasterRequestWP : public RasterRequest {
     public:
@@ -166,13 +167,13 @@ public:
                             = geo::GeoDataset::Resampling::dem
                         , const boost::optional<std::string> & mask
                             = boost::none)
-            : RasterRequest(Operation::margin, dataset, srs, extents,
+            : RasterRequest(Operation::none, dataset, srs, extents,
                         size, resampling, mask)
             , processing(processing), processingOptions(processingOptions)
         {}
     };
 
-    Raster warp(const RasterRequest &request, Aborter &sink);
+    Raster warpWP(const RasterRequestWP &request, Aborter &sink);
 
     struct Heightcoded {
         typedef std::shared_ptr<Heightcoded> pointer;

@@ -327,6 +327,8 @@ cv::Mat* warpDem(DatasetCache &cache, ManagedBuffer &mb
     return tile;
 }
 
+
+
 } // namespace
 
 cv::Mat* warp(DatasetCache &cache, ManagedBuffer &mb
@@ -364,8 +366,49 @@ cv::Mat* warp(DatasetCache &cache, ManagedBuffer &mb
         return warpValueMinMax
             (cache, mb, req.dataset, req.srs, req.extents, req.size
              , req.resampling, req.nodata);
+
+    default:
+        throw;
     }
-    throw;
+}
+
+
+cv::Mat* warpWP(DatasetCache &cache, ManagedBuffer &mb
+              , const GdalWarper::RasterRequestWP &req)
+{
+
+    // obtain dataset handle
+    auto &src(cache(req.dataset));
+
+    // expand extents to include 1-pixel margin for DemProcessing
+    math::Size2 size_(req.size.width + 2, req.size.height + 2);
+    auto extents_(extentsPlusPixel(req.extents, req.size));
+
+    // warp dataset
+    auto warpedSrc(geo::GeoDataset::deriveInMemory(src, req.srs, size_, extents_
+        , ::GDT_Float32, asOptNodata(req.nodata, ForcedNodata)));
+
+    geo::GeoDataset::WarpOptions wo;
+    wo.workingDataType  = ::GDT_Float32;
+
+    auto wri(src.warpInto(warpedSrc, geo::GeoDataset::Resampling::dem, wo));
+    LOG(info1) << "Warp result: scale=" << wri.scale
+               << ", resampling=" << wri.resampling << ".";
+
+    // perform demProcessing
+    auto dst(geo::GeoDataset::demProcessing(warpedSrc
+        , req.processing, req.processingOptions));
+
+    // return output
+    auto &dstMat(dst.cdata());
+
+    cv::Rect roi(1, 1, dstMat.cols - 2, dstMat.rows - 2);
+    auto retMat(dstMat(roi));
+
+    auto *tile(allocateMat(mb, req.size, retMat.type()));
+    retMat.copyTo(*tile);
+
+    return tile;
 }
 
 namespace {

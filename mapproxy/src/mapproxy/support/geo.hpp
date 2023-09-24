@@ -31,7 +31,6 @@
 
 #include "vts-libs/vts/nodeinfo.hpp"
 
-namespace vts = vtslibs::vts;
 namespace vr = vtslibs::registry;
 
 // fwd
@@ -61,6 +60,10 @@ double tileCircumference(const math::Extents2 &extents
 
 math::Extents2 extentsPlusHalfPixel(const math::Extents2 &extents
                                     , const math::Size2 &pixels);
+
+math::Extents2 extentsPlusPixel(const math::Extents2 &extents
+                                    , const math::Size2 &pixels);
+
 
 /** Local Transversal Mercator.
  */

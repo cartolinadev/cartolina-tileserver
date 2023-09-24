@@ -79,15 +79,61 @@ void ShRaster::response(bi::interprocess_mutex &mutex, cv::Mat *response)
     owner_->done();
 }
 
+
+namespace {
+
+void copyOptions(StringVector &dst
+                , const geo::GeoDataset::Sl & options
+                , ManagedBuffer &sm)
+{
+    for (const auto & option : options) {
+        dst.push_back(String(option.data(), option.size()
+                         , sm.get_allocator<char>()));
+    }
+}
+
+void copyOptions(geo::GeoDataset::Sl & options
+                , const StringVector &src)
+{
+    for (const auto &str : src) {
+        options.emplace_back(str.data(), str.size());
+    }
+}
+
+} // namespace
+
+
+
 ShRasterWP::ShRasterWP(const GdalWarper::RasterRequestWP &other
     , ManagedBuffer &sm, ShRequestBase *owner)
     : ShRaster(other, sm, owner)
-    , processing(other.processing) {
+    , processing_(other.processing)
+    , processingOptions_(sm.get_allocator<char>()) {
+
+    copyOptions(processingOptions_, other.processingOptions, sm);
 
     for (const auto &option: other.processingOptions) {
-        processingOptions.emplace_back(option);
+
+        processingOptions_.emplace_back(
+            option.data(), option.size(), sm.get_allocator<char>());
     }
 
+}
+
+ShRasterWP::operator GdalWarper::RasterRequestWP() const {
+
+    geo::GeoDataset::Sl processingOptions;
+    copyOptions(processingOptions, processingOptions_);
+
+    GdalWarper::RasterRequestWP ret(
+        std::string(dataset_.data(), dataset_.size())
+        , geo::SrsDefinition(asString(srs_), srsType_)
+        , extents_, size_, processing_, processingOptions
+        , resampling_, asOptional(mask_));
+
+    ret.setNodata(nodata_);
+
+    return ret;
 }
 
 

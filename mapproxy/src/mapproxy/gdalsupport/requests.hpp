@@ -44,7 +44,7 @@ public:
     cv::Mat* response();
     void response(bi::interprocess_mutex &mutex, cv::Mat *response);
 
-private:
+protected:
     ManagedBuffer &sm_;
     ShRequestBase *owner_;
 
@@ -70,9 +70,11 @@ public:
 
     ~ShRasterWP() {}
 
+    operator GdalWarper::RasterRequestWP() const;
+
 private:
-    geo::GeoDataset::DemProcessing processing;
-    StringVector processingOptions;
+    geo::GeoDataset::DemProcessing processing_;
+    StringVector processingOptions_;
 };
 
 class ShHeightCodeConfig {

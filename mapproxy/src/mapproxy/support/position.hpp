@@ -31,6 +31,8 @@
 
 #include "geo.hpp"
 
+namespace vts = vtslibs::vts;
+
 /** Generate position looking at the scene center having all points in the
  *  extent.
  *

@@ -34,6 +34,9 @@
 cv::Mat* warp(DatasetCache &cache, ManagedBuffer &mb
               , const GdalWarper::RasterRequest &req);
 
+cv::Mat* warpWP(DatasetCache &cache, ManagedBuffer &mb
+              , const GdalWarper::RasterRequestWP &req);
+
 GdalWarper::Heightcoded*
 heightcode(DatasetCache &cache, ManagedBuffer &mb
            , const std::string &vectorDs

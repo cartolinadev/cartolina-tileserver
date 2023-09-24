@@ -89,6 +89,20 @@ public:
         : sm_(sm)
         , raster_(sm.construct<ShRaster>
                   (bi::anonymous_instance)(other, sm, this))
+        , rasterWP_()
+        , heightcode_()
+        , work_()
+        , done_(false)
+        , error_(sm.get_allocator<char>())
+        , errorType_(ErrorType::none)
+        , ec_()
+    {}
+
+    ShRequest(const GdalWarper::RasterRequestWP &other, ManagedBuffer &sm)
+        : sm_(sm)
+        , raster_()
+        , rasterWP_(sm.construct<ShRasterWP>
+                  (bi::anonymous_instance)(other, sm, this))
         , heightcode_()
         , work_()
         , done_(false)
@@ -106,6 +120,7 @@ public:
               , ManagedBuffer &sm)
         : sm_(sm)
         , raster_()
+        , rasterWP_()
         , heightcode_(sm.construct<ShHeightCode>
                       (bi::anonymous_instance)
                       (vectorDs, rasterDs, config, vectorGeoidGrid
@@ -121,6 +136,7 @@ public:
               , ManagedBuffer &sm)
         : sm_(sm)
         , raster_()
+        , rasterWP_()
         , heightcode_()
         , work_()
         , done_(false)
@@ -171,6 +187,15 @@ public:
                        , mb.get_deleter<ShRequest>());
     }
 
+    static pointer create(const GdalWarper::RasterRequestWP &req
+                          , ManagedBuffer &mb)
+    {
+        return pointer(mb.construct<ShRequest>
+                       (bi::anonymous_instance)(req, mb)
+                       , mb.get_allocator<void>()
+                       , mb.get_deleter<ShRequest>());
+    }
+
     static pointer create(const std::string &vectorDs
                           , const DemDataset::list &rasterDs
                           , const geo::heightcoding::Config &config
@@ -200,6 +225,7 @@ private:
     ManagedBuffer &sm_;
 
     ShRaster *raster_;
+    ShRasterWP *rasterWP_;
     ShHeightCode *heightcode_;
     WorkRequest *work_;
 
@@ -222,6 +248,11 @@ void ShRequest::process(bi::interprocess_mutex &mutex, DatasetCache &cache)
 {
     if (raster_) {
         raster_->response(mutex, ::warp(cache, sm_, *raster_));
+        return;
+    }
+
+    if (rasterWP_) {
+        rasterWP_->response(mutex, ::warpWP(cache, sm_, *rasterWP_));
         return;
     }
 
@@ -507,6 +538,8 @@ public:
 
     Raster warp(const RasterRequest &req, Aborter &aborter);
 
+    Raster warpWP(const RasterRequestWP &req, Aborter &aborter);
+
     Heightcoded::pointer
     heightcode(const std::string &vectorDs
                , const DemDataset::list &rasterDs
@@ -570,6 +603,12 @@ GdalWarper::GdalWarper(const Options &options, utility::Runnable &runnable)
 GdalWarper::Raster GdalWarper::warp(const RasterRequest &req, Aborter &aborter)
 {
     return detail().warp(req, aborter);
+}
+
+GdalWarper::Raster GdalWarper::warpWP(const RasterRequestWP &req
+    , Aborter &aborter)
+{
+    return detail().warpWP(req, aborter);
 }
 
 GdalWarper::Heightcoded::pointer
@@ -946,6 +985,35 @@ void GdalWarper::Detail::reportShm()
 }
 
 GdalWarper::Raster GdalWarper::Detail::warp(const RasterRequest &req
+                                            , Aborter &aborter)
+{
+    Lock lock(mutex());
+    ShRequest::pointer shReq(ShRequest::create(req, mb_));
+    queue_->push_back(shReq);
+
+    cond().notify_one();
+
+    {
+        // set aborter for this request
+        ShRequest::wpointer wreq(shReq);
+        aborter.setAborter([wreq, this]()
+        {
+            if (auto r = wreq.lock()) {
+                r->setError
+                    (mutex(), RequestAborted("Request has been aborted"));
+            }
+        });
+    }
+
+    auto result(shReq->getRaster(lock));
+    lock.unlock();
+
+    warpCounter_.event();
+
+    return result;
+}
+
+GdalWarper::Raster GdalWarper::Detail::warpWP(const RasterRequestWP &req
                                             , Aborter &aborter)
 {
     Lock lock(mutex());
