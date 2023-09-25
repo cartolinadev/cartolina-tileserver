@@ -164,11 +164,9 @@ public:
                         , geo::GeoDataset::DemProcessing processing
                         , const std::vector<std::string> & processingOptions
                         , geo::GeoDataset::Resampling resampling
-                            = geo::GeoDataset::Resampling::dem
-                        , const boost::optional<std::string> & mask
-                            = boost::none)
+                            = geo::GeoDataset::Resampling::dem)
             : RasterRequest(Operation::none, dataset, srs, extents,
-                        size, resampling, mask)
+                        size, resampling)
             , processing(processing), processingOptions(processingOptions)
         {}
     };

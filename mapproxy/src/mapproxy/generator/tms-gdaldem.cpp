@@ -30,6 +30,7 @@
 
 #include "../support/tileindex.hpp"
 #include "../support/mmapped/tileindex.hpp"
+#include "../support/atlas.hpp"
 
 #include "imgproc/morphology.hpp"
 #include "utility/premain.hpp"
@@ -135,6 +136,65 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
     return;
 }
 
+void TmsGdaldem::generateTileImage(const vts::TileId &tileId
+    , const Sink::FileInfo &fi, RasterFormat format
+    , Sink &sink, Arsenal &arsenal, const ImageFlags &imageFlags) const {
+
+    // seralization lambda
+    const auto &serialize([&](const cv::Mat &tile) -> void {
+
+        sendImage(tile, Sink::FileInfo(fi), format, imageFlags.atlas, sink);
+    });
+
+    // checks
+    sink.checkAborted();
+
+    if (!imageFlags.checkFormat(format, this->format())) {
+        return sink.error
+            (utility::makeError<NotFound>
+             ("Format <%s> is not supported by this resource (%s)."
+              , format, this->format()));
+    }
+
+    vts::NodeInfo nodeInfo(referenceFrame(), tileId);
+    if (!nodeInfo.valid()) {
+        return sink.error
+            (utility::makeError<NotFound>
+             ("TileId outside of valid reference frame tree."));
+    }
+
+    if (!nodeInfo.productive()
+        || (index_ && !vts::TileIndex::Flag::isReal(index_->get(tileId))))
+    {
+        if (!imageFlags.dontOptimize) {
+            return sink.error
+                (utility::makeError<EmptyImage>("No valid data."));
+        }
+
+        // return full blown black image
+        return serialize(cv::Mat_<cv::Vec3b>(vr::BoundLayer::tileHeight
+                                             , vr::BoundLayer::tileWidth
+                                             , cv::Vec3b(0, 0, 0)));
+    }
+
+    // obtain tile
+    auto tile(arsenal.warper.warpWP(
+        GdalWarper::RasterRequestWP(
+                absoluteDataset(datasetPath_(definition_.dataset))
+                , nodeInfo.srsDef()
+                , nodeInfo.extents()
+                , math::Size2(256, 256)
+                , definition_.processing
+                , definition_.processingOptions
+                , definition_.resampling)
+               , sink));
+    sink.checkAborted();
+
+    // serialize
+    serialize(*tile);
+}
+
+
 void TmsGdaldem::generateTileMask(const vts::TileId &tileId
     , const TmsFileInfo &fi , Sink &sink, Arsenal &arsenal) const {
 
@@ -156,7 +216,7 @@ void TmsGdaldem::generateTileMask(const vts::TileId &tileId
         return;
     }
 
-    // get dataset
+    // obtain mask
     auto mask(arsenal.warper.warp
               (GdalWarper::RasterRequest
                (GdalWarper::RasterRequest::Operation::mask

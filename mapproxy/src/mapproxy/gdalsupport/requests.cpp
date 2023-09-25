@@ -129,7 +129,7 @@ ShRasterWP::operator GdalWarper::RasterRequestWP() const {
         std::string(dataset_.data(), dataset_.size())
         , geo::SrsDefinition(asString(srs_), srsType_)
         , extents_, size_, processing_, processingOptions
-        , resampling_, asOptional(mask_));
+        , resampling_);
 
     ret.setNodata(nodata_);
 
