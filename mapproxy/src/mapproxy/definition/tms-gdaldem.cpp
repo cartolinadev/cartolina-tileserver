@@ -27,7 +27,9 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/utility/in_place_factory.hpp>
 
+#include "mapproxy/resource.hpp"
 #include "utility/premain.hpp"
+#include "utility/raise.hpp"
 
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/as.hpp"
@@ -51,5 +53,114 @@ namespace { utility::PreMain mapproxy_regdef_TmsGdaldem ([]() {
 
 //MAPPROXY_DEFINITION_REGISTER(TmsGdaldem)
 
+
+namespace {
+
+void parseDefinition(TmsGdaldem &def, const Json::Value &value)
+{
+    Json::get(def.dataset, value, "dataset");
+    Json::get(def.processing, value, "processing");
+
+    if (value.isMember("processingOptions")) {
+        const auto poptions(value["processingOptions"]);
+
+        for (const auto &option : poptions)
+            def.processingOptions.emplace_back(option.asString());
+    }
+
+    if (value.isMember("colorFile")) {
+        def.colorFile = boost::in_place(value["colorFile"].asString());
+        LOG(warn3) << "Color file handling not (yet) implemented.";
+    }
+
+    if (value.isMember("format")) {
+
+        Json::get(def.format, value, "format");
+
+    }
+
+    if (value.isMember("resampling")) {
+        Json::get(def.resampling, value, "resampling");
+    }
+
+    if (value.isMember("erodeMask")) {
+        Json::get(def.erodeMask, value,"erodeMask");
+    }
+
+    // tmsCommon
+    def.TmsCommon::parse(value);
 }
 
+void buildDefinition(Json::Value &value, const TmsGdaldem &def)
+{
+
+    value["dataset"] = def.dataset;
+    value["processing"] = boost::lexical_cast<std::string>(def.processing);
+
+    if (!def.processingOptions.empty()) {
+
+        auto & poptions(value["processingOptions"] = Json::arrayValue);
+
+        for (const auto & option : def.processingOptions)
+            poptions.append(option);
+    }
+
+    if (def.colorFile) {
+        value["colorFile"] = def.colorFile.get();
+    }
+
+    value["format"] = boost::lexical_cast<std::string>(def.format);
+    value["resampling"] = boost::lexical_cast<std::string>(def.resampling);
+    value["erodeMask"] = boost::lexical_cast<std::string>(def.resampling);
+
+    def.TmsCommon::build(value);
+}
+
+} // namespace
+
+void TmsGdaldem::from_impl(const Json::Value &value) {
+
+    parseDefinition(*this, value);
+}
+
+void TmsGdaldem::to_impl(Json::Value &value) const {
+    buildDefinition(value, *this);
+}
+
+Changed TmsGdaldem::changed_impl(const DefinitionBase &o) const {
+
+    const auto &other(o.as<TmsGdaldem>());
+
+    // non-safe changes
+    if (dataset != other.dataset) { return Changed::yes; }
+
+    // revision bump
+    if (processing != other.processing) { return Changed::withRevisionBump; }
+    if (processingOptions != other.processingOptions) {
+        return Changed::withRevisionBump; }
+    if (colorFile != other.colorFile) { return Changed::withRevisionBump; }
+    if (resampling != other.resampling) { return Changed::withRevisionBump; }
+    if (erodeMask != other.erodeMask) { return Changed::withRevisionBump; }
+
+    // safe changes
+    if (format != other.format) { return Changed::safely; }
+
+    return TmsCommon::changed_impl(o);
+}
+
+
+bool TmsGdaldem::transparent() const {
+
+    auto & poptions(processingOptions);
+
+    // the only known case when geo::demProcessing output is transparent
+    if (processing == geo::GeoDataset::DemProcessing::color_relief
+        && std::find(poptions.begin(), poptions.end(), "-alpha") != poptions.begin()) {
+        return true;
+    }
+
+    return false;
+
+}
+
+} // namespace resource

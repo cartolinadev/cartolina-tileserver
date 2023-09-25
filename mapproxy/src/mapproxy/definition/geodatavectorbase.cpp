@@ -39,7 +39,7 @@
 #include "options.hpp"
 #include "parse.hpp"
 
-namespace vf = geo::vectorformat;
+//namespace vf = geo::vectorformat;
 
 namespace resource {
 

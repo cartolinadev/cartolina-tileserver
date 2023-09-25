@@ -121,8 +121,9 @@ Changed TmsRaster::changed_impl(const DefinitionBase &o) const
     // format can change
     if (format != other.format) { return Changed::safely; }
 
-    // format can change
+    // resampling can change
     if (resampling != other.resampling) { return Changed::safely; }
+    if (erodeMask != other.erodeMask) { return Changed::safely; }
 
     return TmsCommon::changed_impl(o);
 }

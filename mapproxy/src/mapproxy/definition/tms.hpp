@@ -117,12 +117,15 @@ struct TmsGdaldem : public TmsCommon {
     std::string dataset;
     geo::GeoDataset::DemProcessing processing;
     std::vector<std::string> processingOptions;
+    boost::optional<std::string> colorFile;
     RasterFormat format;
     bool erodeMask;
     geo::GeoDataset::Resampling resampling;
 
     TmsGdaldem(): format(RasterFormat::jpg), erodeMask(false),
         resampling(geo::GeoDataset::Resampling::dem) {}
+
+    bool transparent() const;
 
     static constexpr char driverName[] = "tms-gdaldem";
 

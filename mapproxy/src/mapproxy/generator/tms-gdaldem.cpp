@@ -248,15 +248,7 @@ void TmsGdaldem::generateTileMask(const vts::TileId &tileId
 
 bool TmsGdaldem::transparent() const {
 
-    auto & poptions(definition_.processingOptions);
-
-    // the only known case when geo::demProcessing output is transparent
-    if (definition_.processing == Processing::color_relief
-        && std::find(poptions.begin(), poptions.end(), "-alpha") != poptions.begin()) {
-        return true;
-    }
-
-    return false;
+    return definition_.transparent();
 }
 
 RasterFormat TmsGdaldem::format() const {
