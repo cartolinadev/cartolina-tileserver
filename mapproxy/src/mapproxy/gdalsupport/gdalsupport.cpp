@@ -352,12 +352,14 @@ GdalWarper::Raster ShRequest::getRaster(Lock &lock)
         return done_;
     });
 
-    if (!raster_) {
+    if (!raster_ && !rasterWP_) {
         throw std::logic_error("This shared request is not handling a "
                                "raster operation!");
     }
 
-    if (auto *response = raster_->response()) {
+    auto * response = raster_ ? raster_->response() : rasterWP_->response();
+
+    if (response) {
         auto &sm(sm_);
         return GdalWarper::Raster(response, [&sm](cv::Mat *mat)
         {

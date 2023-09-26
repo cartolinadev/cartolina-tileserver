@@ -111,7 +111,7 @@ void buildDefinition(Json::Value &value, const TmsGdaldem &def)
 
     value["format"] = boost::lexical_cast<std::string>(def.format);
     value["resampling"] = boost::lexical_cast<std::string>(def.resampling);
-    value["erodeMask"] = boost::lexical_cast<std::string>(def.resampling);
+    value["erodeMask"] = def.erodeMask;
 
     def.TmsCommon::build(value);
 }

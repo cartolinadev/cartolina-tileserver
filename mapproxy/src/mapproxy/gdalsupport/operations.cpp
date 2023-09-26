@@ -27,6 +27,8 @@
 #include <new>
 #include <algorithm>
 #include <cstring>
+#include <sstream>
+#include <string>
 #include <type_traits>
 
 #include <boost/iostreams/stream_buffer.hpp>
@@ -39,6 +41,7 @@
 #include <ogrsf_frmts.h>
 
 #include "utility/gccversion.hpp"
+#include "utility/format.hpp"
 
 #include "imgproc/rastermask/cvmat.hpp"
 
@@ -372,6 +375,18 @@ cv::Mat* warp(DatasetCache &cache, ManagedBuffer &mb
     }
 }
 
+namespace {
+
+    std::string serialize(const std::vector<std::string> & opts) {
+
+        std::stringstream stream;
+
+        for (auto opt: opts)
+            stream << opt << " ";
+
+        return stream.str();
+    }
+}
 
 cv::Mat* warpWP(DatasetCache &cache, ManagedBuffer &mb
               , const GdalWarper::RasterRequestWP &req)
@@ -380,9 +395,13 @@ cv::Mat* warpWP(DatasetCache &cache, ManagedBuffer &mb
     // obtain dataset handle
     auto &src(cache(req.dataset));
 
+    LOG(debug) << "Dataset: " << req.dataset;
+
     // expand extents to include 1-pixel margin for DemProcessing
     math::Size2 size_(req.size.width + 2, req.size.height + 2);
     auto extents_(extentsPlusPixel(req.extents, req.size));
+
+    LOG(debug) << "Extents: " << extents_;
 
     // warp dataset
     auto warpedSrc(geo::GeoDataset::deriveInMemory(src, req.srs, size_, extents_
@@ -395,12 +414,15 @@ cv::Mat* warpWP(DatasetCache &cache, ManagedBuffer &mb
     LOG(info1) << "Warp result: scale=" << wri.scale
                << ", resampling=" << wri.resampling << ".";
 
-    // perform demProcessing
     auto dst(geo::GeoDataset::demProcessing(warpedSrc
         , req.processing, req.processingOptions));
 
+    LOG(info1) << utility::format("DEM processing '%s', complete, options: %s",
+                                  req.processing
+                                  , serialize(req.processingOptions));
+
     // return output
-    auto &dstMat(dst.cdata());
+    auto dstMat(dst.readData(CV_8UC1, 1));
 
     cv::Rect roi(1, 1, dstMat.cols - 2, dstMat.rows - 2);
     auto retMat(dstMat(roi));

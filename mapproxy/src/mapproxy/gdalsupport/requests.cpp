@@ -86,18 +86,17 @@ void copyOptions(StringVector &dst
                 , const geo::GeoDataset::Sl & options
                 , ManagedBuffer &sm)
 {
-    for (const auto & option : options) {
+    for (const auto & option : options)
         dst.push_back(String(option.data(), option.size()
                          , sm.get_allocator<char>()));
-    }
 }
 
 void copyOptions(geo::GeoDataset::Sl & options
                 , const StringVector &src)
 {
-    for (const auto &str : src) {
+    for (const auto &str : src)
         options.emplace_back(str.data(), str.size());
-    }
+
 }
 
 } // namespace
@@ -111,13 +110,6 @@ ShRasterWP::ShRasterWP(const GdalWarper::RasterRequestWP &other
     , processingOptions_(sm.get_allocator<char>()) {
 
     copyOptions(processingOptions_, other.processingOptions, sm);
-
-    for (const auto &option: other.processingOptions) {
-
-        processingOptions_.emplace_back(
-            option.data(), option.size(), sm.get_allocator<char>());
-    }
-
 }
 
 ShRasterWP::operator GdalWarper::RasterRequestWP() const {

@@ -251,7 +251,7 @@ Generator::Task TmsRasterBase::generateVtsFile_impl(const FileInfo &fileInfo
         break;
 
     case TmsFileInfo::Type::metatile:
-        if (hasMetatiles()) {
+        if (!hasMetatiles()) {
             sink.error(utility::makeError<NotFound>
                         ("This dataset doesn't provide metatiles."));
             return {};
@@ -324,11 +324,14 @@ vr::BoundLayer TmsRasterBase::boundLayer(ResourceRoot root) const
     // build url
     bl.url = prependRoot
         (utility::format("{lod}-{x}-{y}.%s?gr=%d%s"
-                         , format(), RevisionWrapper(res.revision, "&"))
+                         , format()
+                         , generatorRevision()
+                         , RevisionWrapper(res.revision, "&"))
          , resource(), root);
     if (hasMask()) {
         bl.maskUrl = prependRoot
             (utility::format("{lod}-{x}-{y}.mask?gr=%d%s"
+                             , generatorRevision()
                              , RevisionWrapper(res.revision, "&"))
              , resource(), root);
         if (hasMetatiles()) {
