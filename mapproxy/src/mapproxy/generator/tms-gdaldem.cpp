@@ -39,6 +39,8 @@
 
 #include <opencv2/highgui/highgui.hpp>
 
+#include <cmath>
+
 
 namespace fs = boost::filesystem;
 
@@ -136,6 +138,59 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
     return;
 }
 
+namespace {
+
+    typedef std::vector<std::string> Sl;
+
+    struct OptionProgression {
+        std::string option;
+        uint baseLod;
+        float factor;
+
+        OptionProgression(const std::string & option, const uint baseLod,
+                          const float factor)
+            : option(option), baseLod(baseLod), factor(factor) {}
+
+    };
+
+    typedef std::vector<OptionProgression> Progressions;
+
+    Sl applyProgressions(const Sl &options, const Progressions &progressions,
+                         uint lod) {
+
+        Sl ret{options};
+
+        for (const auto & progression : progressions) {
+
+            // find the option which is subject to proression
+            auto it{std::find(ret.begin(), ret.end(), progression.option)};
+
+            if (ret.end() - it >= 2) {
+
+                LOG(debug) << utility::format("%s %s", progression.option, *it);
+
+                // modify next value (which is the option value)
+                float valueAtBaseLod(boost::lexical_cast<float>(*++it));
+                int level = progression.baseLod - lod;
+
+                LOG(debug) << valueAtBaseLod;
+
+                LOG(debug) << valueAtBaseLod
+                    * ::powf(progression.factor, level);
+
+                *it = boost::lexical_cast<std::string>(
+                    valueAtBaseLod * ::powf(progression.factor, level));
+            } else {
+                LOG(warn3) << "Progression application failed "
+                    << "(unknown option or incompatible option list).";
+            }
+        }
+
+        return ret;
+    }
+}
+
+
 void TmsGdaldem::generateTileImage(const vts::TileId &tileId
     , const Sink::FileInfo &fi, RasterFormat format
     , Sink &sink, Arsenal &arsenal, const ImageFlags &imageFlags) const {
@@ -177,6 +232,14 @@ void TmsGdaldem::generateTileImage(const vts::TileId &tileId
                                              , cv::Vec3b(0, 0, 0)));
     }
 
+    // apply option progression
+    //auto moptions(applyProgressions(definition_.processingOptions,
+    //    {{ "-z", 15, 1.1823 }}, tileId.lod));
+    //auto moptions(applyProgressions(definition_.processingOptions,
+    //    {{ "-z", 1, 1.1823 }}, tileId.lod));
+    auto moptions(applyProgressions(definition_.processingOptions,
+        {{ "-z", 1, powf(10, 1/14.0) }}, tileId.lod));
+
     // obtain tile
     auto tile(arsenal.warper.warpWP(
         GdalWarper::RasterRequestWP(
@@ -185,7 +248,7 @@ void TmsGdaldem::generateTileImage(const vts::TileId &tileId
                 , nodeInfo.extents()
                 , math::Size2(256, 256)
                 , definition_.processing
-                , definition_.processingOptions
+                , moptions
                 , definition_.resampling)
                , sink));
     sink.checkAborted();
