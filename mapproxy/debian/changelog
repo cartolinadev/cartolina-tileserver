@@ -1,3 +1,15 @@
+vts-mapproxy (1.81cart23) testing; urgency=medium
+
+  * tms-gdaldem (ready for testing)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Wed, 27 Sep 2023 00:50:25 +0200
+
+vts-mapproxy (1.80cart23) devel; urgency=medium
+
+  * tms-gdaldem (development version)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Tue, 26 Sep 2023 23:50:12 +0200
+
 vts-mapproxy (1.79cart23) stable; urgency=medium
 
   * minor changes for the Cartolina23 project

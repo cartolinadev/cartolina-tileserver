@@ -24,6 +24,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "json/value.h"
 #include <boost/lexical_cast.hpp>
 #include <boost/utility/in_place_factory.hpp>
 
@@ -68,6 +69,19 @@ void parseDefinition(TmsGdaldem &def, const Json::Value &value)
             def.processingOptions.emplace_back(option.asString());
     }
 
+    if (value.isMember("poProgressions")) {
+
+        const auto poprogressions(value["poProgressions"]);
+
+        for (auto it = poprogressions.begin(); it != poprogressions.end();
+            ++it ) {
+
+
+            def.poProgressions.emplace_back(
+                it.key().asString(), (*it)[0].asUInt(), (*it)[1].asFloat());
+            }
+    }
+
     if (value.isMember("colorFile")) {
         def.colorFile = boost::in_place(value["colorFile"].asString());
         LOG(warn3) << "Color file handling not (yet) implemented.";
@@ -103,6 +117,18 @@ void buildDefinition(Json::Value &value, const TmsGdaldem &def)
 
         for (const auto & option : def.processingOptions)
             poptions.append(option);
+    }
+
+
+    if (!def.poProgressions.empty()) {
+
+        auto & poProgressions(value["poProgresssions"] = Json::objectValue);
+
+        for (const auto & progression : def.poProgressions) {
+
+            auto & op(poProgressions[progression.option] = Json::arrayValue);
+            op.append(progression.baseLod); op.append(progression.factor);
+        }
     }
 
     if (def.colorFile) {
@@ -141,6 +167,8 @@ Changed TmsGdaldem::changed_impl(const DefinitionBase &o) const {
     if (colorFile != other.colorFile) { return Changed::withRevisionBump; }
     if (resampling != other.resampling) { return Changed::withRevisionBump; }
     if (erodeMask != other.erodeMask) { return Changed::withRevisionBump; }
+    if (poProgressions != other.poProgressions) {
+        return Changed::withRevisionBump; }
 
     // safe changes
     if (format != other.format) { return Changed::safely; }

@@ -141,21 +141,10 @@ void TmsGdaldem::prepare_impl(Arsenal &) {
 namespace {
 
     typedef std::vector<std::string> Sl;
+    typedef resource::TmsGdaldem::Progressions Progressions;
 
-    struct OptionProgression {
-        std::string option;
-        uint baseLod;
-        float factor;
-
-        OptionProgression(const std::string & option, const uint baseLod,
-                          const float factor)
-            : option(option), baseLod(baseLod), factor(factor) {}
-
-    };
-
-    typedef std::vector<OptionProgression> Progressions;
-
-    Sl applyProgressions(const Sl &options, const Progressions &progressions,
+    Sl applyProgressions(const Sl &options,
+                         const Progressions &progressions,
                          uint lod) {
 
         Sl ret{options};
@@ -235,10 +224,8 @@ void TmsGdaldem::generateTileImage(const vts::TileId &tileId
     // apply option progression
     //auto moptions(applyProgressions(definition_.processingOptions,
     //    {{ "-z", 15, 1.1823 }}, tileId.lod));
-    //auto moptions(applyProgressions(definition_.processingOptions,
-    //    {{ "-z", 1, 1.1823 }}, tileId.lod));
     auto moptions(applyProgressions(definition_.processingOptions,
-        {{ "-z", 1, powf(10, 1/14.0) }}, tileId.lod));
+        definition_.poProgressions, tileId.lod));
 
     // obtain tile
     auto tile(arsenal.warper.warpWP(

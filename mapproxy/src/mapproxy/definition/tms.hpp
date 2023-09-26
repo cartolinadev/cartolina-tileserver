@@ -122,6 +122,25 @@ struct TmsGdaldem : public TmsCommon {
     bool erodeMask;
     geo::GeoDataset::Resampling resampling;
 
+    struct OptionProgression {
+        std::string option;
+        uint baseLod;
+        float factor;
+
+        OptionProgression(const std::string & option, const uint baseLod,
+                          const float factor)
+            : option(option), baseLod(baseLod), factor(factor) {}
+
+        bool operator == (const OptionProgression & other) const {
+            return option == other.option && baseLod == other.baseLod
+                && factor == other.factor;
+        }
+    };
+
+    typedef std::vector<OptionProgression> Progressions;
+
+    Progressions poProgressions;
+
     TmsGdaldem(): format(RasterFormat::jpg), erodeMask(false),
         resampling(geo::GeoDataset::Resampling::dem) {}
 
