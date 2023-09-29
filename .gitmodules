@@ -39,7 +39,7 @@
 	url = https://github.com/melowntech/libjsoncpp.git
 [submodule "externals/libmath"]
 	path = externals/libmath
-	url = https://github.com/melowntech/libmath.git
+	url = git@macon:melowntech/libmath.git
 [submodule "externals/libservice"]
 	path = externals/libservice
 	url = https://github.com/melowntech/libservice.git

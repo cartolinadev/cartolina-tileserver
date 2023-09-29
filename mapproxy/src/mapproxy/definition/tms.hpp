@@ -31,6 +31,7 @@
 #include <boost/filesystem.hpp>
 
 #include "geo/geodataset.hpp"
+#include "math/math.hpp"
 
 #include "../resource.hpp"
 
@@ -133,7 +134,7 @@ struct TmsGdaldem : public TmsCommon {
 
         bool operator == (const OptionProgression & other) const {
             return option == other.option && baseLod == other.baseLod
-                && factor == other.factor;
+                && math::almostEqual(factor, other.factor);
         }
     };
 
