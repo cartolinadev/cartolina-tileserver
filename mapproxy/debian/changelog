@@ -1,4 +1,4 @@
-vts-mapproxy (1.81cart24) testing; urgency=medium
+vts-mapproxy (1.82cart23) testing; urgency=medium
 
   * (hopefully) fixed the error which caused tms-gdaldem revision bump on every restart
 
