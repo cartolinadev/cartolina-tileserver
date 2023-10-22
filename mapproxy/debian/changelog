@@ -1,10 +1,19 @@
+vts-mapproxy (1.83cart23) testing; urgency=medium
+
+  * (finally) fixed the error which caused tms-gdaldem revision bump on
+    every restart
+  * manual revision change is now considered a safe change (and takes effect
+    during runtime resource update)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sun, 22 Oct 2023 02:06:50 +0200
+
 vts-mapproxy (1.82cart23) testing; urgency=medium
 
   * (hopefully) fixed the error which caused tms-gdaldem revision bump on every restart
 
  -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Tue, 10 Oct 2023 13:10:37 -0400
 
-vts-mapproxy (1.81cart23) testing; urgency=medium
+vts-mapproxy (1.81cart23) stable; urgency=medium
 
   * tms-gdaldem (ready for testing)
 
