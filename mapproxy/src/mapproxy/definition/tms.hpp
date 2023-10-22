@@ -133,6 +133,7 @@ struct TmsGdaldem : public TmsCommon {
             : option(option), baseLod(baseLod), factor(factor) {}
 
         bool operator == (const OptionProgression & other) const {
+
             return option == other.option && baseLod == other.baseLod
                 && math::almostEqual(factor, other.factor);
         }

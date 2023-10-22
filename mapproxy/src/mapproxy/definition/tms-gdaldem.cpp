@@ -122,7 +122,7 @@ void buildDefinition(Json::Value &value, const TmsGdaldem &def)
 
     if (!def.poProgressions.empty()) {
 
-        auto & poProgressions(value["poProgresssions"] = Json::objectValue);
+        auto & poProgressions(value["poProgressions"] = Json::objectValue);
 
         for (const auto & progression : def.poProgressions) {
 

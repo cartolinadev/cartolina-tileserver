@@ -542,6 +542,11 @@ Changed Resource::changed(const Resource &o) const
     auto def(definition_->changed(*o.definition()));
     if (def != Changed::no) { return def; }
 
+    // forced revision change
+    if (o.revision != revision) {
+        return Changed::safely;
+    }
+
     // from here down only safely-changed stuff can follow
 
     if (changedCredits) { return Changed::safely; }

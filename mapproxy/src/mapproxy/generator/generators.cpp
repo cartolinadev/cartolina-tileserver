@@ -318,8 +318,6 @@ void Generators::Detail::replace(const Generator::pointer &original
     auto ioriginal(serving_.find(original));
     // and replace
     serving_.replace(ioriginal, replacement);
-    LOG(info3)
-        << "Replaced resource <" << original->id() << "> with new definiton.";
 }
 
 void Generators::Detail::update(const Resource::map &resources)
@@ -373,7 +371,7 @@ void Generators::Detail::update(const Resource::map &resources)
 
     // process common stuff
     while ((iresources != eresources) && (iserving != eserving)) {
-        const auto &resource(iresources->second);
+        auto resource(iresources->second);
         if (iresources->first < (*iserving)->id()) {
             // new resource
             add(resource);
@@ -386,6 +384,9 @@ void Generators::Detail::update(const Resource::map &resources)
             ++iserving;
         } else {
             // existing resource
+            resource.revision = std::max((*iserving)->resource().revision,
+                                         resource.revision);
+
             switch ((*iserving)->changed(resource)) {
             case Changed::no:
                 // same stuff, do nothing
@@ -451,10 +452,15 @@ void Generators::Detail::update(const Resource::map &resources)
             prepare(generator);
         } else {
             this->replace(generator->replace(), generator);
+
         }
+
+        LOG(info4) << "Replaced resource "
+                << generator->resource().id << ", revision "
+                << generator->resource().revision << ".";
     }
 
-    LOG(info2) << "Resources updated.";
+    LOG(info4) << "Resources updated.";
     if (!ready_) {
         ready_ = true;
         LOG(info3) << "Ready to serve.";

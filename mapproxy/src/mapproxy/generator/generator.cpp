@@ -110,7 +110,7 @@ Generator::Generator(const Params &params, const Properties &properties)
         savedResource_ = loadResource(rfile).front();
 
         // merge both revisions; at least manually changed revision is used
-        savedResource_.revision = resource_.revision
+        resource_.revision
             = std::max(resource_.revision, savedResource_.revision);
 
         const auto freeze(config().freezes(savedResource_.generator.type));
