@@ -1,3 +1,4 @@
+
 function quadKey(x, y, z) {
     var quadKey = [];
     for (i = z - 1; i >= 0; --i) {
@@ -106,6 +107,41 @@ function loadBoundLayer(callback) {
     x.send(null);
 }
 
+
+// Function to extract 'pos' parameter from the URL
+// convenience hack, for melown2015 ref frame only
+function getPosFromURL() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var pos = urlParams.get('pos');
+    
+    // pos=lat,lon,zoom
+    if (pos) {
+        var coords = pos.split(',');
+        if (coords.length === 3) {
+            var lat = parseFloat(coords[0]);
+            var lon = parseFloat(coords[1]);
+            var zoom = parseInt(coords[2], 10);
+            if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
+                return { lat: lat, lon: lon, zoom: zoom };
+            }
+        }
+    }
+    
+    // x=lon,y=lat,z=zoom (mapy.cz convenience)
+    var x = urlParams.get('x'), y = urlParams.get('y'); 
+    var z = urlParams.get('z');
+    
+    if (x && y && z ) {
+        var lon = parseFloat(x), lat = parseFloat(y), zoom = parseInt(z, 10);
+        if (!isNaN(lat) && !isNaN(lon) && !isNaN(zoom)) {
+            return { lat: lat, lon: lon, zoom: zoom };
+        }
+    }
+    
+    return null;
+}
+
+
 function processBoundLayer(bl) {
     var crs = L.CRS.Simple;
     var map = new L.Map("map", { crs: crs });
@@ -179,15 +215,39 @@ function processBoundLayer(bl) {
     L.control.layers(layers, overlays).addTo(map);
     map.addLayer(tl);
 
-    // set view to center of tile range at min lod
-    var center = [ (bl.tileRange[0][0] + bl.tileRange[1][0]) / 2.0 + 0.5
+    // get coordinates from the URL if present
+    // convenience hack, for melown2015 ref frame only
+    var urlCoords = getPosFromURL();
+    if (urlCoords) {
+    
+        let ppos = L.CRS.EPSG3857.latLngToPoint(L.latLng(urlCoords.lat, urlCoords.lon), urlCoords.zoom);     
+        map.setView(crs.pointToLatLng(ppos, urlCoords.zoom + 1), urlCoords.zoom + 1);
+        
+        // Update the 'pos' parameter in the URL when the user pans or zooms
+        map.on('moveend', function() {
+               
+            let ll = L.CRS.EPSG3857.pointToLatLng(crs.latLngToPoint(map.getCenter(), map.getZoom()),
+                map.getZoom() - 1);
+            
+            var newPos = `pos=${ll.lat.toFixed(4)},${ll.lng.toFixed(4)},${map.getZoom() - 1}`;
+            var newUrl = window.location.origin + window.location.pathname + '?' + newPos;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+        });
+                
+    } else {
+
+        // set view to center of tile range at min lod
+        var center = [ (bl.tileRange[0][0] + bl.tileRange[1][0]) / 2.0 + 0.5
                    , (bl.tileRange[0][1] + bl.tileRange[1][1]) / 2.0 + 0.5];
 
-    map.setView(crs.pointToLatLng(L.point(center[0] / Math.pow(2, startZoom - 8)
+        map.setView(crs.pointToLatLng(L.point(center[0] / Math.pow(2, startZoom - 8)
                                           , center[1] / Math.pow(2, startZoom - 8)))
                 , startZoom);
+    }
 }
+
 
 function startBrowser() {
     loadBoundLayer(processBoundLayer);
 }
+
