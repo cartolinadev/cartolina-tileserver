@@ -1,3 +1,10 @@
+vts-mapproxy (1.84cart23-1) test; urgency=medium
+
+  * support for URL positions in bound layer embedded map viewer 
+    (melown2015 reference frame only)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 24 Aug 2024 18:36:30 +0200
+
 vts-mapproxy (1.83cart23) testing; urgency=medium
 
   * (finally) fixed the error which caused tms-gdaldem revision bump on
