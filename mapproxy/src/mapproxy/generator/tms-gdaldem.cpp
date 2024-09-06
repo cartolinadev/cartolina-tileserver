@@ -151,7 +151,7 @@ namespace {
 
         for (const auto & progression : progressions) {
 
-            // find the option which is subject to proression
+            // find the option which is subject to progression
             auto it{std::find(ret.begin(), ret.end(), progression.option)};
 
             if (ret.end() - it >= 2) {
@@ -177,14 +177,14 @@ namespace {
 
         return ret;
     }
-}
+} // namespace
 
 
 void TmsGdaldem::generateTileImage(const vts::TileId &tileId
     , const Sink::FileInfo &fi, RasterFormat format
     , Sink &sink, Arsenal &arsenal, const ImageFlags &imageFlags) const {
 
-    // seralization lambda
+    // serialization lambda
     const auto &serialize([&](const cv::Mat &tile) -> void {
 
         sendImage(tile, Sink::FileInfo(fi), format, imageFlags.atlas, sink);

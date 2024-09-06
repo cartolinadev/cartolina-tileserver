@@ -176,8 +176,11 @@ public:
     WorkRequest::Response consumeWork(Lock &lock);
 
     virtual void done_impl();
+
+    // called in  workers
     void process(bi::interprocess_mutex &mutex, DatasetCache &cache);
 
+    // called in the main thread
     static pointer create(const GdalWarper::RasterRequest &req
                           , ManagedBuffer &mb)
     {
