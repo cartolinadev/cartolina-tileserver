@@ -278,6 +278,7 @@ UTILITY_GENERATE_ENUM_IO(Resource::Generator::Type,
 UTILITY_GENERATE_ENUM(RasterFormat,
     ((jpg))
     ((png))
+    ((webp))
 )
 
 UTILITY_GENERATE_ENUM_IO(GeneratorInterface::Interface,
@@ -291,6 +292,7 @@ std::istream& operator>>(std::istream &is, GeneratorInterface &gi);
 
 constexpr RasterFormat MaskFormat = RasterFormat::png;
 constexpr RasterFormat RasterMetatileFormat = RasterFormat::png;
+constexpr RasterFormat RasterNormalMapFormat = RasterFormat::webp;
 
 /** Resource root: used to build relative paths from given root.
  */

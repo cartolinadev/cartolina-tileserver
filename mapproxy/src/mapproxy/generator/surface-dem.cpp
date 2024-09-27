@@ -206,6 +206,9 @@ vts::MapConfig SurfaceDem::mapConfig_impl(ResourceRoot root) const
     // force 2d interface existence
     mc.surfaces.front().has2dInterface = true;
 
+    // we always serve normal maps
+    mc.surfaces.front().hasNormalMaps = true;
+
     if (!definition_.introspection.position) {
         // no introspection position, generate some
 

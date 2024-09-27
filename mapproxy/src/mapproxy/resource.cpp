@@ -642,6 +642,7 @@ std::string contentType(RasterFormat format)
     switch (format) {
     case RasterFormat::jpg: return "image/jpeg";
     case RasterFormat::png: return "image/png";
+    case RasterFormat::webp: return "image/webp";
     }
     return {};
 }

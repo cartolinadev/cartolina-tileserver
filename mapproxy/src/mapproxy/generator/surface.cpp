@@ -69,13 +69,14 @@
 #include "../support/revision.hpp"
 #include "../support/tms.hpp"
 #include "../support/introspection.hpp"
+#include "../support/atlas.hpp"
 
 #include "files.hpp"
 #include "surface.hpp"
 #include "providers.hpp"
 
 namespace fs = boost::filesystem;
-namespace bio = boost::iostreams;
+//namespace bio = boost::iostreams;
 namespace vr = vtslibs::registry;
 namespace vs = vtslibs::storage;
 namespace vts = vtslibs::vts;
@@ -157,7 +158,7 @@ private:
         return surface_.filePath(file);
     }
 
-    vts::FullTileSetProperties properties_impl() const {
+    vts::FullTileSetProperties properties_impl() const override {
         return surface_.properties_;
     }
 
@@ -369,9 +370,9 @@ Generator::Task SurfaceBase
             };
 
         case vts::TileFile::normals:
-            sink.error(utility::makeError<http::InternalServerError>(
-                "Under construction."));
-            break;
+            return [=](Sink &sink, Arsenal &arsenal) {
+                generateNormalMap(fi.tileId, sink, fi, arsenal);
+            };
 
         case vts::TileFile::atlas:
             sink.error(utility::makeError<NotFound>
@@ -491,6 +492,22 @@ void SurfaceBase::generateMesh(const vts::TileId &tileId
 
     sink.content(os.str(), sfi);
 }
+
+
+void SurfaceBase::generateNormalMap(const vts::TileId &tileId
+                                    , Sink &sink
+                                    , const SurfaceFileInfo &fi
+                                    , Arsenal &arsenal) const {
+
+    (void) tileId; (void) arsenal;
+    cv::Mat normalMap;
+
+    auto sfi(fi.sinkFileInfo());
+
+    // write normal map to stream
+    sendImage(normalMap, sfi, RasterNormalMapFormat, false, sink);
+}
+
 
 void SurfaceBase::generate2dMask(const vts::TileId &tileId
                                  , Sink &sink

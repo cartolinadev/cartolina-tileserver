@@ -226,7 +226,7 @@ add_executable(mapproxy
   ${mapproxy_CESIUM_SOURCES}
   ${mapproxy_OL_SOURCES}
   )
-target_link_libraries(mapproxy mapproxy-core ${MODULE_LIBRARIES})
+target_link_libraries(mapproxy mapproxy-core ${MODULE_LIBRARIES} ${WEBP_LIBRARIES})
 target_compile_definitions(mapproxy PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(mapproxy)
 set_target_version(mapproxy ${vts-mapproxy_VERSION})

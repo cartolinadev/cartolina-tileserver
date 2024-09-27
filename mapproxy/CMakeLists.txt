@@ -82,6 +82,11 @@ include_directories(${MGTS_INCLUDE_DIRS})
 find_package(GLIB REQUIRED)
 include_directories(${GLIB_INCLUDE_DIRS})
 
+find_package(WebP REQUIRED)
+#pkg_check_modules(WEBP REQUIRED libwebp)
+include_directories(${WEBP_INCLUDE_DIRS})
+link_directories(${WEBP_LIBRARIES})
+
 # dependencies
 add_subdirectory(src/dbglog)
 add_subdirectory(src/utility)

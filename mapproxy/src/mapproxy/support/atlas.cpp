@@ -25,12 +25,50 @@
  */
 
 #include <opencv2/highgui/highgui.hpp>
+#include <webp/encode.h>
 
 #include "vts-libs/vts/opencv/atlas.hpp"
+#include "utility/raise.hpp"
 
 #include "atlas.hpp"
 
 namespace vts = vtslibs::vts;
+
+namespace {
+
+
+void encodeToWebP(const cv::Mat& img, std::vector<unsigned char>& buf) {
+
+    int width = img.cols;
+    int height = img.rows;
+    int stride = img.step;
+
+    uint8_t* output = nullptr;
+    size_t outputSize;
+
+    if (img.type() != CV_8UC3) {
+        throw utility::makeError<InternalError>("Unsupported image type.");
+    }
+
+    // note that we use the BGR (not the RGB) variant.
+    // This is meant for normal maps.
+    outputSize = WebPEncodeLosslessBGR(
+        img.data, width, height, stride, &output);
+
+    if (outputSize == 0) {
+        throw utility::makeError<InternalError>("Failed to create WebP data");
+    }
+
+    buf.assign(output, output + outputSize);
+
+    // cleanup
+    WebPFree(output);
+}
+
+
+
+} // namespace
+
 
 void sendImage(const cv::Mat &image, const Sink::FileInfo &sfi
                , RasterFormat format, bool atlas, Sink &sink)
@@ -60,6 +98,11 @@ void sendImage(const cv::Mat &image, const Sink::FileInfo &sfi
     case RasterFormat::png:
         cv::imencode(".png", image, buf
                      , { cv::IMWRITE_PNG_COMPRESSION, 9 });
+        break;
+
+    case RasterFormat::webp:
+        // meant for normal maps
+        encodeToWebP(image, buf);
         break;
     }
 

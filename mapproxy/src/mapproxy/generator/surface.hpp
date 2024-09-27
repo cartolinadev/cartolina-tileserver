@@ -83,6 +83,12 @@ private:
                       , vts::SubMesh::TextureMode textureMode
                       = vts::SubMesh::external) const;
 
+    void generateNormalMap(const vts::TileId &tileId
+                      , Sink &sink
+                      , const SurfaceFileInfo &fi
+                      , Arsenal &arsenal) const;
+
+
     void generate2dMask(const vts::TileId &tileId
                         , Sink &sink
                         , const SurfaceFileInfo &fileInfo
