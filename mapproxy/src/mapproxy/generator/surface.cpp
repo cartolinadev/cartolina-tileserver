@@ -368,6 +368,11 @@ Generator::Task SurfaceBase
                 generateMesh(fi.tileId, sink, fi, arsenal);
             };
 
+        case vts::TileFile::normals:
+            sink.error(utility::makeError<http::InternalServerError>(
+                "Under construction."));
+            break;
+
         case vts::TileFile::atlas:
             sink.error(utility::makeError<NotFound>
                         ("No internal texture present."));

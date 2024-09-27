@@ -194,7 +194,7 @@ void simplifyMesh(geometry::Mesh &mesh, const vts::NodeInfo &nodeInfo
                   , const TileFacesCalculator &tileFacesCalculator
                   , const boost::optional<std::string> &geoidGrid)
 {
-    const auto ts(math::size(nodeInfo.extents()));
+    //const auto ts(math::size(nodeInfo.extents()));
 
     // calculate number of faces
     auto area(meshArea(mesh));

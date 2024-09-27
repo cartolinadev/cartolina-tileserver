@@ -72,8 +72,8 @@
 #include "metatile.hpp"
 
 namespace fs = boost::filesystem;
-namespace vr = vtslibs::registry;
-namespace vs = vtslibs::storage;
+//namespace vr = vtslibs::registry;
+//namespace vs = vtslibs::storage;
 namespace vts = vtslibs::vts;
 
 namespace generator {
