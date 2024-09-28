@@ -123,6 +123,11 @@ private:
                      , Sink &sink, Arsenal &arsenal
                      , const OptHeight &defaultHeight = boost::none) const = 0;
 
+    /* Normal map generation. Return normal map in spatial division coordinates,
+       as a CV_32FC3 (three channel 32-bit float) matrix. */
+    virtual cv::Mat generateNormalMapImpl(const vts::NodeInfo &nodeInfo
+                     , Sink &sink, Arsenal &arsenal) const;
+
     /** Cesium terrain provider support. Generates non-VTS mesh.
      */
 

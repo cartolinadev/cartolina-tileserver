@@ -35,7 +35,7 @@
 #include "../support/coverage.hpp"
 
 namespace vts = vtslibs::vts;
-namespace vr = vtslibs::registry;
+//namespace vr = vtslibs::registry;
 
 namespace generator {
 

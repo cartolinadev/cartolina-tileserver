@@ -498,14 +498,39 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
                                     , Sink &sink
                                     , const SurfaceFileInfo &fi
                                     , Arsenal &arsenal) const {
+    // check availability
+    auto flags(index_->tileIndex.get(tileId));
+    if (!vts::TileIndex::Flag::isReal(flags)) {
+        utility::raise<NotFound>("No mesh (or  normal map) for this tile.");
+    }
 
-    (void) tileId; (void) arsenal;
-    cv::Mat normalMap;
+    vts::NodeInfo nodeInfo(referenceFrame(), tileId);
+    if (!nodeInfo.productive()) {
+        utility::raise<NotFound>
+            ("TileId outside of valid reference frame tree.");
+    }
 
+    // generate normal map
+    cv::Mat normalMap = generateNormalMapImpl(nodeInfo, sink, arsenal);
+
+    // convert normal map to physical srs
+    const auto conv(sds2phys(nodeInfo, definition_.getGeoidGrid()));
+    if (!conv) { utility::raise<InternalError>("Conversion failed."); }
+
+    geo::normalmap::convertNormals(normalMap, nodeInfo.extents(), conv.conv());
+
+    // obtain the final image, write to stream
     auto sfi(fi.sinkFileInfo());
 
-    // write normal map to stream
-    sendImage(normalMap, sfi, RasterNormalMapFormat, false, sink);
+    cv::Mat img = geo::normalmap::exportToRGB(normalMap);
+    sendImage(img, sfi, RasterNormalMapFormat, false, sink);
+}
+
+cv::Mat SurfaceBase::generateNormalMapImpl(
+    const vts::NodeInfo &, Sink &, Arsenal &) const {
+
+    utility::raise<NotFound>("Normal maps not provided by this generator.");
+    return cv::Mat();
 }
 
 
