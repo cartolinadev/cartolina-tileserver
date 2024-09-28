@@ -522,7 +522,7 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     // obtain the final image, write to stream
     auto sfi(fi.sinkFileInfo());
 
-    cv::Mat img = geo::normalmap::exportToRGB(normalMap);
+    cv::Mat img = geo::normalmap::exportToBGR(normalMap);
     sendImage(img, sfi, RasterNormalMapFormat, false, sink);
 }
 

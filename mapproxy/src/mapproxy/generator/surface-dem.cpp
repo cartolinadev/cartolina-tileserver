@@ -382,6 +382,43 @@ AugmentedMesh SurfaceDem
     return mesh;
 }
 
+cv::Mat SurfaceDem::generateNormalMapImpl(
+    const vts::NodeInfo &nodeInfo, Sink &sink, Arsenal &arsenal) const {
+
+    sink.checkAborted();
+
+    // warp input dataset as DEM, at tile size + 1 pixel on each side
+    // we inflate the extents by half pixel, Operation::dem
+    // adds another half pixel.
+    // FIXME: replace this trickery with a new type of Operation
+    auto extents = extentsPlusHalfPixel(nodeInfo.extents(), {256,256});
+
+    auto dem(arsenal.warper.warp(
+        GdalWarper::RasterRequest(
+            GdalWarper::RasterRequest::Operation::dem
+            , dem_.dataset
+            , nodeInfo.srsDef(), extents
+            , math::Size2(257, 257))
+        , sink));
+
+    sink.checkAborted();
+
+    /* FIXME: we should generate coverage and modify normal map generation
+       to filter no-data values from normal inputs. With current code, normal
+       artifacts may appear on DEM edges. */
+
+    // obtain normal map at spatial division coords
+    math::Size2f pixelSize(
+        (nodeInfo.extents().ur[0] - nodeInfo.extents().ll[0]) / 256,
+        (nodeInfo.extents().ur[1] - nodeInfo.extents().ll[1]) / 256);
+
+    auto normalMap = geo::normalmap::demNormals(*dem, pixelSize,
+                   geo::normalmap::Algorithm::zevenbergenThorne, true);
+
+    // return result
+    return normalMap;
+}
+
 void SurfaceDem::generateNavtile(const vts::TileId &tileId
                                  , Sink &sink
                                  , const SurfaceFileInfo &fi

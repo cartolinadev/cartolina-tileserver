@@ -62,6 +62,10 @@ private:
     generateMeshImpl(const vts::NodeInfo &nodeInfo, Sink &sink
                      , Arsenal &arsenal, const OptHeight &defaultHeight) const;
 
+    virtual cv::Mat
+    generateNormalMapImpl(const vts::NodeInfo &nodeInfo
+                          , Sink &sink, Arsenal &arsenal) const;
+
     virtual void generateNavtile(const vts::TileId &tileId
                                  , Sink &sink
                                  , const SurfaceFileInfo &fileInfo
@@ -70,8 +74,9 @@ private:
     vts::MetaTile generateMetatileImpl(const vts::TileId &tileId
                                        , Sink &sink, Arsenal &arsenal
                                        , const MetatileOverrides &overrides
-                                       = {})
-        const;
+                                       = {}) const;
+
+
 
     void addToRegistry();
 

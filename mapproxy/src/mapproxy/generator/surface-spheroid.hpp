@@ -58,6 +58,10 @@ private:
                                            , Arsenal &arsenal
                                            , const OptHeight&) const;
 
+    virtual cv::Mat
+    generateNormalMapImpl(const vts::NodeInfo &nodeInfo
+                          , Sink &sink, Arsenal &arsenal) const;
+
     virtual void generateNavtile(const vts::TileId &tileId
                                  , Sink &sink
                                  , const SurfaceFileInfo &fileInfo

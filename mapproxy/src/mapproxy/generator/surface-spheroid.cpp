@@ -192,6 +192,10 @@ vts::MapConfig SurfaceSpheroid::mapConfig_impl(ResourceRoot root) const
             (properties_, resource().registry
              , extraProperties(definition_), path));
 
+    // yes, we do provide normal maps
+    mc.surfaces.front().hasNormalMaps = true;
+
+    // position
     if (!definition_.introspection.position) {
         // no introspection position, generate some
 
@@ -507,6 +511,22 @@ SurfaceSpheroid::generateMeshImpl(const vts::NodeInfo &nodeInfo, Sink &sink
 
     return mesh;
 }
+
+cv::Mat SurfaceSpheroid::generateNormalMapImpl(
+    const vts::NodeInfo &, Sink &sink, Arsenal &) const {
+
+    sink.checkAborted();
+
+    // warp input dataset as DEM, at tile size + 1 pixel on each side
+
+    // obtain normal map at spatial division coords
+    auto normalMap = geo::normalmap::flatSurfaceNormals(
+        math::Size2(256, 256), CV_32F);
+
+    // return result
+    return normalMap;
+}
+
 
 void SurfaceSpheroid::generateNavtile(const vts::TileId &tileId
                                       , Sink &sink
