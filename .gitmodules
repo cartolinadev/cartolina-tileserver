@@ -6,7 +6,7 @@
 	url = https://github.com/melowntech/buildsys-cmake.git
 [submodule "externals/vts-libs"]
 	path = externals/vts-libs
-	url = https://github.com/melowntech/vts-libs.git
+	url = git@macon:melowntech/vts-libs.git
 [submodule "externals/gdal-drivers"]
 	path = externals/gdal-drivers
 	url = git@macon:melowntech/gdal-drivers.git
@@ -42,7 +42,7 @@
 	url = git@macon:melowntech/libmath.git
 [submodule "externals/libservice"]
 	path = externals/libservice
-	url = https://github.com/melowntech/libservice.git
+	url = git@macon:melowntech/libservice.git
 [submodule "externals/libpysupport"]
 	path = externals/libpysupport
 	url = https://github.com/melowntech/libpysupport.git

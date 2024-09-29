@@ -517,7 +517,18 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     const auto conv(sds2phys(nodeInfo, definition_.getGeoidGrid()));
     if (!conv) { utility::raise<InternalError>("Conversion failed."); }
 
-    geo::normalmap::convertNormals(normalMap, nodeInfo.extents(), conv.conv());
+    bool optimize = false;
+
+    if (tileId.lod > 3) {
+        // FIXME: we optimize normals for lods starting with 4, when tiles no
+        // longer span greater parts of hemispheres. A more abstract
+        // approach based on the reference frames specification would
+        // be more rigorous.
+        optimize = true;
+    }
+
+    geo::normalmap::convertNormals(
+        normalMap, nodeInfo.extents(), conv.conv(), optimize);
 
     // obtain the final image, write to stream
     auto sfi(fi.sinkFileInfo());
