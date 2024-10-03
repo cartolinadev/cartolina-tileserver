@@ -39,6 +39,7 @@
 #include "geometry/mesh.hpp"
 
 #include "geo/coordinates.hpp"
+#include "geo/landcover.hpp"
 
 #include "imgproc/rastermask/mappedqtree.hpp"
 
@@ -104,16 +105,60 @@ SurfaceDem::SurfaceDem(const Params &params)
            , definition_.dem.geoidGrid)
     , maskTree_(absoluteDatasetRf(definition_.mask))
 {
+    if (definition_.landcover) {
+        landcover_.emplace(
+            LandcoverDataset(
+                absoluteDataset(definition_.landcover->dataset + "/ophoto"),
+                absoluteDataset(definition_.landcover->classdef)));
+    }
+
+    bool success = true;
+
     if (loadFiles(definition_)) {
+
         // remember dem in registry
         addToRegistry();
+
+    } else {
+        success = false;
     }
+
+    try {
+        loadLandcoverClassdef();
+
+    } catch (const std::exception& e) {
+        // not ready
+        success = false;
+    }
+
+    if (success) makeReady();
 }
 
 SurfaceDem::~SurfaceDem()
 {
     removeFromRegistry();
 }
+
+
+void SurfaceDem::loadLandcoverClassdef() {
+
+    Json::Value jclasses;
+
+    try {
+            std::ifstream file(landcover_->classdef);
+            file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+
+            file >> jclasses;
+            file.close();
+
+    } catch (const std::exception& e) {
+            utility::raise<IOError>("Error reading \"%1% (%2%)\".",
+                landcover_->classdef, e.what());
+    }
+
+    lcClassdef_ = geo::landcover::fromJson(jclasses);
+}
+
 
 void SurfaceDem::prepare_impl(Arsenal&)
 {
@@ -125,6 +170,12 @@ void SurfaceDem::prepare_impl(Arsenal&)
     auto dataset(geo::GeoDataset::open(dem_.dataset));
     auto datasetMin(geo::GeoDataset::open(dem_.dataset + ".min"));
     auto datasetMax(geo::GeoDataset::open(dem_.dataset + ".max"));
+
+    // open optional landcover dataset + load lc class definition
+    if (landcover_) {
+        auto lcDataset(geo::GeoDataset::open(landcover_->dataset));
+        loadLandcoverClassdef();
+    }
 
     // build properties
     properties_ = {};
@@ -403,6 +454,32 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
 
     sink.checkAborted();
 
+    // obtain flat mask if landcover ds is provided, create empty inversion mask
+    imgproc::RasterMask flatMask(dem->cols, dem->rows,
+                            imgproc::RasterMask::EMPTY);
+    imgproc::quadtree::RasterMask inversionMask(dem->cols, dem->rows,
+                            imgproc::quadtree::RasterMask::EMPTY);
+
+    LOG(debug) << lcClassdef_.size();
+
+    if (landcover_) {
+
+        auto lc(arsenal.warper.warp(
+            GdalWarper::RasterRequest(
+                GdalWarper::RasterRequest::Operation::imageNoExpand,
+                landcover_->dataset,
+                nodeInfo.srsDef(),
+                nodeInfo.extents(),
+                math::Size2(256, 256),
+                geo::GeoDataset::Resampling::nearest), sink));
+
+        cv::imwrite("lc.png", *lc);
+
+        sink.checkAborted();
+
+        flatMask = geo::landcover::flatMask(*lc, lcClassdef_);
+    }
+
     /* FIXME: we should generate coverage and modify normal map generation
        to filter no-data values from normal inputs. With current code, normal
        artifacts may appear on DEM edges. */
@@ -419,7 +496,7 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
     params.zFactor = 1.0;
 
     auto normalMap = geo::normalmap::demNormals<double>(
-        *dem, pixelSize, params);
+        *dem, pixelSize, params, flatMask, inversionMask);
 
     // return result
     return normalMap;

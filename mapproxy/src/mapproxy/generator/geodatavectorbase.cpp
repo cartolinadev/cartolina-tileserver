@@ -42,7 +42,7 @@
 #include "files.hpp"
 
 namespace ba = boost::algorithm;
-namespace vf = geo::vectorformat;
+//namespace vf = geo::vectorformat;
 
 namespace generator {
 

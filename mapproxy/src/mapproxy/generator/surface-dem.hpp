@@ -29,6 +29,7 @@
 
 #include "vts-libs/vts/tileset/tilesetindex.hpp"
 #include "vts-libs/vts/tileset/properties.hpp"
+#include "geo/landcover.hpp"
 
 #include "surface.hpp"
 
@@ -76,17 +77,23 @@ private:
                                        , const MetatileOverrides &overrides
                                        = {}) const;
 
-
-
     void addToRegistry();
 
     void removeFromRegistry();
+
+    void loadLandcoverClassdef();
 
     const Definition &definition_;
 
     /** Path to original dataset (must contain overviews)
      */
     const DemDataset dem_;
+
+    // path to optional landcover
+    boost::optional<const LandcoverDataset> landcover_;
+
+    // loaded landcover class definition;
+    geo::landcover::Classes lcClassdef_;
 
     // mask tree
     MaskTree maskTree_;

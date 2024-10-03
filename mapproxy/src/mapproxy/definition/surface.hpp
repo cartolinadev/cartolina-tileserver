@@ -93,10 +93,13 @@ private:
 };
 
 struct SurfaceDem : public Surface {
+
     DemDataset dem;
+    boost::optional<LandcoverDataset> landcover;
     boost::optional<boost::filesystem::path> mask;
     unsigned int textureLayerId;
     boost::optional<std::string> heightcodingAlias;
+
 
     SurfaceDem() : textureLayerId() {}
 

@@ -62,6 +62,17 @@ void parseDefinition(SurfaceDem &def, const Json::Value &value)
         def.dem.geoidGrid = s;
     }
 
+    if (value.isMember("landcover")) {
+
+        auto lc = value["landcover"];
+
+        std::string ds, classdef;
+        Json::get(ds, lc, "dataset");
+        Json::get(classdef, lc, "classdef");
+
+        def.landcover = LandcoverDataset(ds, classdef);
+    }
+
     if (value.isMember("heightcodingAlias")) {
         def.heightcodingAlias = boost::in_place();
         Json::get(*def.heightcodingAlias, value, "heightcodingAlias");
@@ -83,6 +94,13 @@ void buildDefinition(Json::Value &value, const SurfaceDem &def)
     if (def.dem.geoidGrid) {
         value["geoidGrid"] = *def.dem.geoidGrid;
     }
+    if (def.landcover) {
+        auto& lc(value["landcover"] = Json::objectValue);
+
+        lc["dataset"] = def.landcover->dataset;
+        lc["classdef"] = def.landcover->classdef;
+    }
+
     if (def.heightcodingAlias) {
         value["heightcodingAlias"] = *def.heightcodingAlias;
     }
@@ -109,6 +127,8 @@ Changed SurfaceDem::changed_impl(const DefinitionBase &o) const
     if (dem != other.dem) { return Changed::yes; }
     if (mask != other.mask) { return Changed::yes; }
     if (textureLayerId != other.textureLayerId) { return Changed::yes; }
+
+    if (landcover != other.landcover) { return Changed::yes; }
 
     return Surface::changed_impl(o);
 }

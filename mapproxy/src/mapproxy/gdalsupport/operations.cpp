@@ -94,6 +94,7 @@ cv::Mat* warpImage(DatasetCache &cache, ManagedBuffer &mb
                    , geo::GeoDataset::Resampling resampling
                    , const boost::optional<std::string> &maskDataset
                    , bool optimize
+                   , bool expand
                    , const geo::NodataValue &nodata)
 {
     auto &src(cache(dataset));
@@ -125,8 +126,20 @@ cv::Mat* warpImage(DatasetCache &cache, ManagedBuffer &mb
      * OP: to serve imagery in original color table mode we shall need to 
      * extract palette and pass it back to the calling layer.
      */
-    auto *tile(allocateMat(mb, size, dst.makeDataType(CV_8U, 3)));
-    dst.readDataInto(CV_8U, *tile, 3);
+
+    cv::Mat *tile;
+
+    if (expand) {
+
+        tile = allocateMat(mb, size, dst.makeDataType(CV_8U, 3));
+        dst.readDataInto(CV_8U, *tile, 3);
+
+    } else {
+
+        tile = allocateMat(mb, size, dst.makeDataType(CV_8U, 0));
+        dst.readDataInto(CV_8U, *tile, 0);
+    }
+
     return tile;
 }
 
@@ -339,13 +352,19 @@ cv::Mat* warp(DatasetCache &cache, ManagedBuffer &mb
 {
     typedef GdalWarper::RasterRequest::Operation Operation;
 
+    bool optimize, expand;
+
     switch (req.operation) {
     case Operation::image:
     case Operation::imageNoOpt:
+    case Operation::imageNoExpand:
+        optimize = (req.operation == Operation::image);
+        expand = (req.operation != Operation::imageNoExpand);
+
         return warpImage
             (cache, mb, req.dataset, req.srs, req.extents, req.size
              , req.resampling, req.mask
-             , (req.operation == Operation::image), req.nodata);
+             , optimize, expand, req.nodata);
 
     case Operation::mask:
     case Operation::maskNoOpt:
@@ -707,8 +726,6 @@ heightcode(DatasetCache &cache, ManagedBuffer &mb
         rasterDsStack.push_back(&cache(ds.dataset));
     }
     
-    LOG(info1) << "Here.";
-
     return heightcode(mb, openVectorDataset(vectorDs, config, openOptions)
                       , rasterDsStack
                       , config, rasterDs.back().geoidGrid

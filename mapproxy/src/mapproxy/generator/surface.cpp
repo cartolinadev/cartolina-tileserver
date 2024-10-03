@@ -221,7 +221,8 @@ bool SurfaceBase::loadFiles(const Definition &definition)
             // load delivery index
             index_ = boost::in_place(referenceFrame().metaBinaryOrder
                                      , deliveryIndexPath);
-            makeReady();
+            // it is now up to child class to handle this
+            // makeReady();
             return true;
         }
     } catch (const std::exception &e) {

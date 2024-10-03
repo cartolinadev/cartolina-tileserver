@@ -53,6 +53,21 @@ struct DemDataset {
     typedef std::vector<DemDataset> list;
 };
 
+struct LandcoverDataset {
+    std::string dataset;
+    std::string classdef;
+
+    LandcoverDataset() = default;
+
+    LandcoverDataset(const std::string& dataset
+        , const std::string& classdef)
+        : dataset(dataset), classdef(classdef) {}
+
+    bool operator==(const LandcoverDataset &other) const;
+    bool operator!=(const LandcoverDataset &other) const;
+};
+
+
 double tileCircumference(const math::Extents2 &extents
                          , const geo::SrsDefinition &srs
                          , const geo::GeoDataset &dataset
@@ -89,5 +104,17 @@ inline bool DemDataset::operator!=(const DemDataset &other) const
 {
     return !operator==(other);
 }
+
+inline bool LandcoverDataset::operator==(const LandcoverDataset& other) const
+{
+    return ((dataset == other.dataset)
+            && (classdef == other.classdef));
+}
+
+inline bool LandcoverDataset::operator!=(const LandcoverDataset& other) const
+{
+    return !operator==(other);
+}
+
 
 #endif // mapproxy_support_geo_hpp_included_

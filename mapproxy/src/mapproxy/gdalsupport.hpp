@@ -73,6 +73,7 @@ public:
         /** Operations:
          *  * image:
          *  * imageNoOpt:
+         *  * imageNoExpand:
          *        warps image from dataset, uses optional mask
          *        returns N channel 8bit image
          *
@@ -117,7 +118,7 @@ public:
          *       placeholder for a derived class
          */
         enum class Operation {
-            image, imageNoOpt, mask, maskNoOpt, detailMask, dem
+            image, imageNoOpt, imageNoExpand, mask, maskNoOpt, detailMask, dem
             , demOptimal, valueMinMax, none
         };
 
