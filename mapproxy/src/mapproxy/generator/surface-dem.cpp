@@ -411,9 +411,15 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
     math::Size2f pixelSize(
         (nodeInfo.extents().ur[0] - nodeInfo.extents().ll[0]) / 256,
         (nodeInfo.extents().ur[1] - nodeInfo.extents().ll[1]) / 256);
+        
+    geo::normalmap::Parameters params;
+    
+    params.algorithm = geo::normalmap::Algorithm::zevenbergenThorne;
+    params.viewspaceRf = true; params.invertRelief = false; 
+    params.zFactor = 1.0;
 
-    auto normalMap = geo::normalmap::demNormals(*dem, pixelSize,
-                   geo::normalmap::Algorithm::zevenbergenThorne, true);
+    auto normalMap = geo::normalmap::demNormals<double>(
+        *dem, pixelSize, params);
 
     // return result
     return normalMap;
