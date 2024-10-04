@@ -41,6 +41,8 @@ set(mapproxy-core_SOURCES
   definition/tms-raster.cpp
   definition/tms-gdaldem.cpp
   definition/tms-raster-remote.cpp
+  definition/tms-normalmap.cpp
+  definition/tms-specularmap.cpp
   definition/tms-bing.cpp
   definition/tms-windyty.cpp
 
@@ -142,6 +144,8 @@ set(mapproxy_SOURCES
   generator/tms-raster.hpp generator/tms-raster.cpp
   generator/tms-gdaldem.hpp generator/tms-gdaldem.cpp
   generator/tms-raster-remote.hpp generator/tms-raster-remote.cpp
+  generator/tms-normalmap.hpp generator/tms-normalmap.cpp
+  generator/tms-specularmap.hpp generator/tms-specularmap.cpp
   generator/tms-bing.hpp generator/tms-bing.cpp
   generator/tms-windyty.hpp generator/tms-windyty.cpp
   generator/tms-raster-synthetic.hpp generator/tms-raster-synthetic.cpp

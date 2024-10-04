@@ -34,6 +34,7 @@
 #include "math/math.hpp"
 
 #include "../resource.hpp"
+#include "../support/geo.hpp"
 
 // fwd
 namespace Json { class Value; }
@@ -149,6 +150,40 @@ struct TmsGdaldem : public TmsCommon {
     bool transparent() const;
 
     static constexpr char driverName[] = "tms-gdaldem";
+
+protected:
+    virtual void from_impl(const Json::Value &value);
+    virtual void to_impl(Json::Value &value) const;
+    virtual Changed changed_impl(const DefinitionBase &other) const;
+    virtual bool frozenCredits_impl() const { return false; }
+};
+
+struct TmsNormalMap : public TmsCommon {
+
+    std::string dataset;
+    boost::optional<LandcoverDataset> landcover;
+    bool erodeMask;
+
+    TmsNormalMap(): erodeMask(false) {}
+
+    static constexpr char driverName[] = "tms-normalmap";
+
+protected:
+    virtual void from_impl(const Json::Value &value);
+    virtual void to_impl(Json::Value &value) const;
+    virtual Changed changed_impl(const DefinitionBase &other) const;
+    virtual bool frozenCredits_impl() const { return false; }
+};
+
+struct TmsSpecularMap: public TmsCommon {
+
+    std::string dataset;
+    RasterFormat format;
+    bool erodeMask;
+
+    TmsSpecularMap(): format(RasterFormat::png), erodeMask(false) {}
+
+    static constexpr char driverName[] = "tms-specularmap";
 
 protected:
     virtual void from_impl(const Json::Value &value);

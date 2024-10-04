@@ -46,8 +46,6 @@ constexpr char TmsGdaldem::driverName[];
 
 namespace { utility::PreMain mapproxy_regdef_TmsGdaldem ([]() {
 
-    std::cout << "Here.\n";
-
     registerDefinition<TmsGdaldem>(); });
 
 }
