@@ -124,7 +124,8 @@ SurfaceDem::SurfaceDem(const Params &params)
     }
 
     try {
-        loadLandcoverClassdef();
+
+        if (landcover_) loadLandcoverClassdef();
 
     } catch (const std::exception& e) {
         // not ready
@@ -441,7 +442,7 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
     // warp input dataset as DEM, at tile size + 1 pixel on each side
     // we inflate the extents by half pixel, Operation::dem
     // adds another half pixel.
-    // FIXME: replace this trickery with a new type of Operation
+    // this trickery could be replaced with a new type of ::Operation
     auto extents = extentsPlusHalfPixel(nodeInfo.extents(), {256,256});
 
     auto dem(arsenal.warper.warp(
@@ -452,6 +453,8 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
             , math::Size2(257, 257))
         , sink));
 
+    //auto dem = std::make_shared<cv::Mat>(cv::Mat::zeros(257, 257, CV_64FC1));
+
     sink.checkAborted();
 
     // obtain flat mask if landcover ds is provided, create empty inversion mask
@@ -459,8 +462,6 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
                             imgproc::RasterMask::EMPTY);
     imgproc::quadtree::RasterMask inversionMask(dem->cols, dem->rows,
                             imgproc::quadtree::RasterMask::EMPTY);
-
-    LOG(debug) << lcClassdef_.size();
 
     if (landcover_) {
 
@@ -473,16 +474,16 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
                 math::Size2(256, 256),
                 geo::GeoDataset::Resampling::nearest), sink));
 
-        cv::imwrite("lc.png", *lc);
+        //cv::imwrite("lc.png", *lc);
 
         sink.checkAborted();
 
         flatMask = geo::landcover::flatMask(*lc, lcClassdef_);
+        // flatMask.invert(); // diagnostics
     }
 
-    /* FIXME: we should generate coverage and modify normal map generation
-       to filter no-data values from normal inputs. With current code, normal
-       artifacts may appear on DEM edges. */
+    /* FIXME: we should deal with no-data values from normal inputs.
+       With current code, normal artifacts may appear on DEM edges. */
 
     // obtain normal map at spatial division coords
     math::Size2f pixelSize(

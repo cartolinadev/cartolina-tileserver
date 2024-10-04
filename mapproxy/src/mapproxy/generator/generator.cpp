@@ -148,6 +148,8 @@ Generator::Generator(const Params &params, const Properties &properties)
                 break;
             } else {
                 // changed but not freezing bump revision
+                ++resource_.revision;
+
                 LOG(warn3)
                     << "Definition of resource <" << resource_.id
                     << "> differs from the one stored in store at "
@@ -155,7 +157,6 @@ Generator::Generator(const Params &params, const Properties &properties)
                     << resource_.revision
                     << " due to disabled resource freezing.";
 
-                ++resource_.revision;
                 changeEnforced_ = true;
             }
         }

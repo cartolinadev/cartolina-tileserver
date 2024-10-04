@@ -101,6 +101,14 @@ cv::Mat* warpImage(DatasetCache &cache, ManagedBuffer &mb
     auto dst(geo::GeoDataset::deriveInMemory
              (src, srs, size, extents, boost::none, asOptNodata(nodata)));
 
+    LOG(debug) << "Dataset: " << dataset;
+    LOG(debug) << "SRS:" << srs;
+    LOG(debug) << "Warp extents: " << extents;
+    LOG(debug) << "Size: " << size;
+    LOG(debug) << "Resampling: " << resampling;
+    LOG(debug) << "Optimize: " << optimize;
+    LOG(debug) << "Expand: " << expand;
+
     src.warpInto(dst, resampling);
 
     if (optimize && dst.cmask().empty()) {
