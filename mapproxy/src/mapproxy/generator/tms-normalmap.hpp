@@ -23,3 +23,70 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
+#ifndef mapproxy_generator_tms_normalmap_hpp_included_
+#define mapproxy_generator_tms_normalmap_hpp_included_
+
+#include "../definition/tms.hpp"
+#include "tms-raster-base.hpp"
+
+namespace generator {
+
+namespace detail {
+
+/** Member from base idiom */
+class TmsNormalMapMFB {
+
+protected:
+    TmsNormalMapMFB(const Generator::Params &params);
+    typedef resource::TmsNormalMap Definition;
+    const Definition &definition_;
+};
+
+} // namespace detail
+
+class TmsNormalMap
+    : private detail::TmsNormalMapMFB
+    , public TmsRasterBase
+{
+public:
+    TmsNormalMap(const Params &params);
+
+    using detail::TmsNormalMapMFB::Definition;
+
+
+private:
+/*    void prepare_impl(Arsenal &) override;
+
+    void generateTileImage(const vts::TileId &tileId
+                                   , const Sink::FileInfo &fi
+                                   , RasterFormat format
+                                   , Sink &sink, Arsenal &arsenal
+                                   , const ImageFlags &imageFlags
+                                   = ImageFlags()) const override;
+
+    void generateTileMask(const vts::TileId &tileId
+                          , const TmsFileInfo &fi
+                          , Sink &sink, Arsenal &arsenal) const override;*/
+
+    bool transparent() const override { return false; };
+
+    RasterFormat format() const override;
+
+    int generatorRevision() const override;
+
+    boost::any boundLayerOptions() const override;
+
+    bool hasMetatiles() const override { return true; };
+
+    bool hasMask() const override { return true; };
+
+    const mmapped::TileIndex *tileIndex() const override
+    { return index_.get(); }
+
+    std::unique_ptr<mmapped::TileIndex> index_;
+};
+
+} // namespace generator
+
+#endif // mapproxy_generator_tms_normalmap_hpp_included_

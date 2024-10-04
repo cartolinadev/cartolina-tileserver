@@ -88,7 +88,6 @@ void parseDefinition(TmsGdaldem &def, const Json::Value &value)
     if (value.isMember("format")) {
 
         Json::get(def.format, value, "format");
-
     }
 
     if (value.isMember("resampling")) {
