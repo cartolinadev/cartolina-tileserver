@@ -1,3 +1,15 @@
+vts-mapproxy (1.99cart23-0) testing; urgency=medium
+
+  * normal maps in surfaces, tms-normalmap, tms-specularmap generators
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 05 Oct 2024 20:21:37 +0200
+
+vts-mapproxy (1.85cart23-0) unreleased; urgency=low
+
+  * experimental build with webp support, normal maps wip
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 28 Sep 2024 11:39:40 +0200
+
 vts-mapproxy (1.84cart23-1) test; urgency=medium
 
   * support for URL positions in bound layer embedded map viewer 
