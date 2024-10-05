@@ -75,6 +75,9 @@ TmsNormalMap::TmsNormalMap(const Params &params) : TmsRaster(params) {
                 absoluteDataset(definition.landcover->classdef)));
     }
 
+    params_.zFactor = definition.zFactor;
+    params_.invertRelief = definition.invertRelief;
+
     bool success(true);
 
     try {
@@ -198,7 +201,7 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
         sink.checkAborted();
 
         flatMask = geo::landcover::flatMask(*lc, lcClassdef_);
-        // flatMask.invert(); // diagnostics
+        //flatMask.invert(); // diagnostics
     }
 
     // obtain normal map
@@ -209,9 +212,9 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     geo::normalmap::Parameters params;
 
     params.algorithm = geo::normalmap::Algorithm::zevenbergenThorne;
-    params.viewspaceRf = true;
-    params.invertRelief = true; // darker is higher, as the convention goes
-    params.zFactor = 0.427; // empirical value chosen to mimick gimp plugin
+    params.viewspaceRf = true; // normals in viewspace coords
+    params.invertRelief = params_.invertRelief; // darker is higher, as the convention goes
+    params.zFactor = params_.zFactor; // empirical value chosen to mimick gimp plugin
 
     auto normalMap = geo::normalmap::demNormals<uchar>(
         *tile, pixelSize, params, flatMask, inversionMask);

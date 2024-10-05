@@ -47,6 +47,9 @@ namespace {
 
 void parseDefinition(TmsNormalMap &def, const Json::Value &value) {
 
+    Json::getOpt(def.zFactor, value, "zFactor");
+    Json::getOpt(def.invertRelief, value, "invertRelief");
+
     if (value.isMember("landcover")) {
 
         auto lc = value["landcover"];
@@ -68,6 +71,9 @@ void parseDefinition(TmsNormalMap &def, const Json::Value &value) {
 }
 
 void buildDefinition(Json::Value &value, const TmsNormalMap &def) {
+
+    value["zFactor"] = def.zFactor;
+    value["invertRelief"] = def.invertRelief;
 
     if (def.landcover) {
         auto& lc(value["landcover"] = Json::objectValue);
@@ -95,10 +101,11 @@ Changed TmsNormalMap::changed_impl(const DefinitionBase &o) const {
 
     const auto &other(o.as<TmsNormalMap>());
 
-    //LOG(debug) << dataset << " <-> " << other.dataset;
-
-    // non-safe changes
-    if (landcover != other.landcover) { return Changed::yes; }
+    // non-safe changes - none
+    // revision bump
+    if (landcover != other.landcover
+        || ! math::almostEqual(zFactor, other.zFactor)) {
+        return Changed::withRevisionBump; }
 
     // common definition
     return TmsRaster::changed_impl(o);

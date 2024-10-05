@@ -64,6 +64,12 @@ private:
     // path to optional landcover
     boost::optional<const LandcoverDataset> landcover_;
 
+    // normal map parameters
+    struct {
+        float zFactor;
+        bool invertRelief;
+    } params_;
+
     // loaded landcover class definition;
     geo::landcover::Classes lcClassdef_;
 

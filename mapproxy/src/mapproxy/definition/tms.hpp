@@ -160,12 +160,13 @@ protected:
 
 struct TmsNormalMap : public TmsRaster {
 
+    bool invertRelief;
+    float zFactor;
     boost::optional<LandcoverDataset> landcover;
 
-    TmsNormalMap(): TmsRaster() {
+    TmsNormalMap(): TmsRaster(),
+        invertRelief(true), zFactor(0.427) {
         format = RasterFormat::webp;
-        erodeMask = false;
-        transparent = false;
         resampling = geo::GeoDataset::Resampling::cubic;
     }
 
@@ -178,13 +179,15 @@ protected:
     bool frozenCredits_impl() const override { return false; }
 };
 
-struct TmsSpecularMap: public TmsCommon {
+struct TmsSpecularMap: public TmsRaster {
 
-    std::string dataset;
-    RasterFormat format;
-    bool erodeMask;
+    uchar shininessBits;
 
-    TmsSpecularMap(): format(RasterFormat::png), erodeMask(false) {}
+    TmsSpecularMap():  TmsRaster(),
+        shininessBits(4) {
+        format = RasterFormat::png;
+        resampling = geo::GeoDataset::Resampling::mode;
+    }
 
     static constexpr char driverName[] = "tms-specularmap";
 

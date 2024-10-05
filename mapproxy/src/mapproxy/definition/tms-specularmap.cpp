@@ -27,13 +27,14 @@
 
 //#include "mapproxy/resource.hpp"
 #include "utility/premain.hpp"
-//#include "utility/raise.hpp"
-
+#include "utility/raise.hpp"
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/as.hpp"
 
 #include "tms.hpp"
 #include "factory.hpp"
+
+namespace ut = utility;
 
 namespace resource {
 
@@ -45,40 +46,38 @@ namespace {
 
 void parseDefinition(TmsSpecularMap &def, const Json::Value &value) {
 
-    Json::get(def.dataset, value, "dataset");
+    if (value.isMember("shininessBits")) {
 
-    if (value.isMember("format")) {
-
-        Json::get(def.format, value, "format");
+        def.shininessBits = Json::as<uchar>(value["shininessBits"]);
     }
 
-    if (value.isMember("erodeMask")) {
-        Json::get(def.erodeMask, value,"erodeMask");
-    }
+    Json::getOpt(def.shininessBits, value, "shininessBits");
 
-    // common defition
-    def.TmsCommon::parse(value);
+    if (def.format != RasterFormat::webp
+        && def.format != RasterFormat::png) {
+
+        ut::raise<Json::Error>(
+            "Format %1% not supported in tms-specularmap, use png or webp",
+            def.format);
+    }
 }
 
 void buildDefinition(Json::Value &value, const TmsSpecularMap &def) {
 
-    value["dataset"] = def.dataset;
-    value["format"] = boost::lexical_cast<std::string>(def.format);
-    value["erodeMask"] = def.erodeMask;
-
-    // common definition
-    def.TmsCommon::build(value);
+    value["shininessBits"] = static_cast<uchar>(def.shininessBits);
 }
 
 } // namespace
 
 void TmsSpecularMap::from_impl(const Json::Value &value) {
 
+    TmsRaster::from_impl(value);
     parseDefinition(*this, value);
 }
 
 void TmsSpecularMap::to_impl(Json::Value &value) const {
 
+    TmsRaster::to_impl(value);
     buildDefinition(value, *this);
 }
 
@@ -86,14 +85,12 @@ Changed TmsSpecularMap::changed_impl(const DefinitionBase &o) const {
 
     const auto &other(o.as<TmsSpecularMap>());
 
-    // non-safe changes
-    if (dataset != other.dataset) { return Changed::yes; }
+    // non-safe changes - none
 
-    // revision bump
-    if (erodeMask != other.erodeMask) { return Changed::withRevisionBump; }
+    // revision bump - none
+    if (shininessBits != other.shininessBits) { return Changed::yes; }
 
-    // safe changes
-    if (format != other.format) { return Changed::safely; }
+    // safe changes - none
 
     // common definition
     return TmsCommon::changed_impl(o);
