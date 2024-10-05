@@ -190,7 +190,7 @@ void Generator::makeReady()
     ready_ = true;
     readySince_ = utility::usecFromEpoch();
 
-    LOG(info2) << "Ready to serve resource <" << id()
+    LOG(info3) << "Ready to serve resource <" << id()
                << "> (type <" << resource().generator << ">).";
 }
 

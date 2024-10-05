@@ -182,6 +182,7 @@ void SurfaceDem::prepare_impl(Arsenal&)
     properties_.id = r.id.fullId();
     properties_.referenceFrame = r.referenceFrame->id;
     properties_.credits = asIntSet(r.credits);
+    properties_.hasNormalMaps = true;
     if (definition_.textureLayerId) {
         properties_.boundLayers.insert(definition_.textureLayerId);
     }

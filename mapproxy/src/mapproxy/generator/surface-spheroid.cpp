@@ -130,6 +130,8 @@ void SurfaceSpheroid::prepare_impl(Arsenal&)
     properties_.position.verticalExtent
         = math::size(referenceFrame().division.extents).height;
 
+    properties_.hasNormalMaps = true;
+
     properties_.position.verticalFov = config().defaultFov;
 
     vts::tileset::Index index(referenceFrame().metaBinaryOrder);
