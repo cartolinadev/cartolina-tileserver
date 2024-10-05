@@ -25,41 +25,27 @@
  */
 
 
-#ifndef mapproxy_generator_tms_normalmap_hpp_included_
-#define mapproxy_generator_tms_normalmap_hpp_included_
+#ifndef mapproxy_generator_tms_specularmap_hpp_included_
+#define mapproxy_generator_tms_specularmap_hpp_included_
 
-#include "../definition/tms.hpp"
+#include "tms-raster.hpp"
 
-#include "tms-raster-base.hpp"
+#include "geo/landcover.hpp"
 
 namespace generator {
 
-namespace detail {
-
-/** Member from base idiom */
-class TmsNormalMapMFB {
-
-protected:
-    TmsNormalMapMFB(const Generator::Params &params);
-    typedef resource::TmsNormalMap Definition;
-    const Definition &definition_;
-};
-
-} // namespace detail
-
-class TmsNormalMap
-    : private detail::TmsNormalMapMFB
-    , public TmsRasterBase
+class TmsSpecularMap : public TmsRaster
 {
 public:
-    TmsNormalMap(const Params &params
-              , const boost::optional<RasterFormat> &format = boost::none);
 
-    using detail::TmsNormalMapMFB::Definition;
+    // needed for Generator::registerType
+    typedef resource::TmsSpecularMap Definition;
 
+    TmsSpecularMap(const Params &params);
 
 private:
-    void prepare_impl(Arsenal &) override;
+
+    virtual void extraPrep() override;
 
     void generateTileImage(const vts::TileId &tileId
                                    , const Sink::FileInfo &fi
@@ -68,28 +54,22 @@ private:
                                    , const ImageFlags &imageFlags
                                    = ImageFlags()) const override;
 
-    void generateTileMask(const vts::TileId &tileId
-                          , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const override;
-
-    bool hasMetatiles() const override { return true; };
-
-    bool hasMask() const override { return true; };
-
-    bool transparent() const override;
-
-    RasterFormat format() const override;
-
     int generatorRevision() const override;
 
-    boost::any boundLayerOptions() const override;
+    // load landcover class def from file
+    void loadLandcoverClassdef();
 
-    const mmapped::TileIndex *tileIndex() const override
-    { return index_.get(); }
+    // specular map parameters
+    struct {
+        std::string classdef;
+        uchar shininessBits;
+    } params_;
 
-    std::unique_ptr<mmapped::TileIndex> index_;
+    // loaded landcover class definition;
+    geo::landcover::Classes lcClassdef_;
 };
 
 } // namespace generator
 
-#endif // mapproxy_generator_tms_normalmap_hpp_included_
+
+#endif // mapproxy_generator_tms_specularmap_hpp_included_

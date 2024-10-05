@@ -182,6 +182,7 @@ protected:
 struct TmsSpecularMap: public TmsRaster {
 
     uchar shininessBits;
+    std::string classdef;
 
     TmsSpecularMap():  TmsRaster(),
         shininessBits(4) {

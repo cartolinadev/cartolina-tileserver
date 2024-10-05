@@ -57,7 +57,8 @@ class TmsRaster
 {
 public:
     TmsRaster(const Params &params
-              , const boost::optional<RasterFormat> &format = boost::none);
+              , const boost::optional<RasterFormat> &format = boost::none
+              , bool doNotMakeReady = false);
 
     using detail::TmsRasterMFB::Definition;
 
@@ -100,6 +101,8 @@ protected:
 
     bool transparent() const;
 
+    RasterFormat format() const;
+
     /** Mask dataset path. Only when defined and not a RF tree.
      */
     boost::optional<std::string> maskDataset_;
@@ -135,8 +138,6 @@ private:
                                   , const TmsFileInfo &fi
                                   , Sink &sink
                                   , Arsenal&) const;
-    RasterFormat format() const;
-
     bool hasMask() const;
 
     virtual bool hasMetatiles() const { return hasMetatiles_; }

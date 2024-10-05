@@ -102,7 +102,8 @@ detail::TmsRasterMFB
 {}
 
 TmsRaster::TmsRaster(const Params &params
-                     , const boost::optional<RasterFormat> &format)
+                     , const boost::optional<RasterFormat> &format
+                     , bool doNotMakeReady)
     : detail::TmsRasterMFB(params)
     , TmsRasterBase(params, format ? *format : definition_.format)
     , hasMetatiles_(false)
@@ -126,7 +127,7 @@ TmsRaster::TmsRaster(const Params &params
         complexDataset_
             = fs::exists(absoluteDataset(definition_.dataset + "/ophoto"));
 
-        bool success = true;
+        /*bool success = true;
 
         try {
             extraPrep();
@@ -135,7 +136,8 @@ TmsRaster::TmsRaster(const Params &params
             success = false;
         }
 
-        if (success) { makeReady(); return; }
+        if (success && ! doNotMakeReady) { makeReady(); return; }*/
+        if (!doNotMakeReady) { makeReady(); return; }
     };
 
     // not seen or index-less
@@ -145,6 +147,9 @@ TmsRaster::TmsRaster(const Params &params
 TmsRaster::DatasetDesc TmsRaster::dataset_impl() const
 {
     if (complexDataset_) {
+
+        LOG(debug) << "Here.";
+
         return { definition_.dataset + "/ophoto" };
     }
 
@@ -154,6 +159,7 @@ TmsRaster::DatasetDesc TmsRaster::dataset_impl() const
 void TmsRaster::prepare_impl(Arsenal&)
 {
     LOG(info2) << "Preparing <" << id() << ">.";
+
 
     if (fs::exists(absoluteDataset(definition_.dataset + "/ophoto"))) {
         // complex dataset directory

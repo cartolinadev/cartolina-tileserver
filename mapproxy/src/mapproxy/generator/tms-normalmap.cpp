@@ -27,10 +27,10 @@
 #include "tms-normalmap.hpp"
 
 #include "factory.hpp"
-#include "../support/atlas.cpp"
+#include "../support/atlas.hpp"
 #include "../support/mesh.cpp"
 
-#include "imgproc/morphology.hpp"
+//#include "imgproc/morphology.hpp"
 #include "utility/premain.hpp"
 #include "utility/raise.hpp"
 
@@ -64,7 +64,8 @@ utility::PreMain Factory::register_([]()
 
 
 
-TmsNormalMap::TmsNormalMap(const Params &params) : TmsRaster(params) {
+TmsNormalMap::TmsNormalMap(const Params &params)
+    : TmsRaster(params, boost::none, true) {
 
     auto definition = params.resource.definition<resource::TmsNormalMap>();
 
@@ -78,7 +79,7 @@ TmsNormalMap::TmsNormalMap(const Params &params) : TmsRaster(params) {
     params_.zFactor = definition.zFactor;
     params_.invertRelief = definition.invertRelief;
 
-    bool success(true);
+    /*bool success(true);
 
     try {
 
@@ -92,7 +93,7 @@ TmsNormalMap::TmsNormalMap(const Params &params) : TmsRaster(params) {
     if (success) { makeReady(); return; }
 
     // default
-    LOG(info1) << "Generator for <" << id() << "> not ready.";
+    LOG(info1) << "Generator for <" << id() << "> not ready.";*/
 }
 
 void TmsNormalMap::extraPrep() {
@@ -150,13 +151,15 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
                           : geo::GeoDataset::Resampling::cubic);
 
     // warp
+    auto extents = extentsPlusPixel(nodeInfo.extents(), {256,256});
+
     auto tile(arsenal.warper.warp
               (GdalWarper::RasterRequest
                (GdalWarper::RasterRequest::Operation::image
                 , absoluteDataset(ds.path)
                 , nodeInfo.srsDef()
-                , nodeInfo.extents()
-                , math::Size2(256, 256)
+                , extents
+                , math::Size2(258, 258)
                 , resampling
                 , absoluteDataset(maskDataset_))
                , sink));
@@ -219,8 +222,10 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     auto normalMap = geo::normalmap::demNormals<uchar>(
         *tile, pixelSize, params, flatMask, inversionMask);
 
-    // convert normals to refframe's physical srs
+    LOG(debug) << boost::format("normal map size: %1%x%2%")
+        % normalMap.rows % normalMap.cols;
 
+    // convert normals to refframe's physical srs
     const auto conv(sds2phys(nodeInfo, boost::none));
     if (!conv) { utility::raise<InternalError>("Conversion failed."); }
 

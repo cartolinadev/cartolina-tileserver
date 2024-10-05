@@ -46,6 +46,10 @@ namespace {
 
 void parseDefinition(TmsSpecularMap &def, const Json::Value &value) {
 
+    Json::get(def.classdef, value, "classdef");
+
+    typedef geo::GeoDataset::Resampling Resampling;
+
     if (value.isMember("shininessBits")) {
 
         def.shininessBits = Json::as<uchar>(value["shininessBits"]);
@@ -53,18 +57,29 @@ void parseDefinition(TmsSpecularMap &def, const Json::Value &value) {
 
     Json::getOpt(def.shininessBits, value, "shininessBits");
 
+    // sanity
     if (def.format != RasterFormat::webp
         && def.format != RasterFormat::png) {
 
         ut::raise<Json::Error>(
             "Format %1% not supported in tms-specularmap, use png or webp",
             def.format);
+
+    }
+
+    if (def.resampling != Resampling::mode
+        && def.resampling != Resampling::nearest) {
+
+        ut::raise<Json::Error>(
+            "Resampling %1% not supported in tms-specularmap, use mode or nearest",
+            def.format);
     }
 }
 
 void buildDefinition(Json::Value &value, const TmsSpecularMap &def) {
 
-    value["shininessBits"] = static_cast<uchar>(def.shininessBits);
+    value["classdef"] = def.classdef;
+    value["shininessBits"] = def.shininessBits;
 }
 
 } // namespace
@@ -88,12 +103,13 @@ Changed TmsSpecularMap::changed_impl(const DefinitionBase &o) const {
     // non-safe changes - none
 
     // revision bump - none
+    if (classdef != other.classdef) { return Changed::yes; }
     if (shininessBits != other.shininessBits) { return Changed::yes; }
 
     // safe changes - none
 
     // common definition
-    return TmsCommon::changed_impl(o);
+    return TmsRaster::changed_impl(o);
 }
 
 
