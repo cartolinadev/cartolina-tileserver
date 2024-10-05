@@ -125,8 +125,17 @@ TmsRaster::TmsRaster(const Params &params
         hasMetatiles_ = true;
         complexDataset_
             = fs::exists(absoluteDataset(definition_.dataset + "/ophoto"));
-        makeReady();
-        return;
+
+        bool success = true;
+
+        try {
+            extraPrep();
+        } catch (std::exception &) {
+            // not ready
+            success = false;
+        }
+
+        if (success) { makeReady(); return; }
     };
 
     // not seen or index-less
@@ -205,6 +214,9 @@ void TmsRaster::prepare_impl(Arsenal&)
         // some invalid pixels
         hasMetatiles_ = !ds.allValid();
     }
+
+    // extra prep in subclass
+    extraPrep();
 }
 
 RasterFormat TmsRaster::format() const

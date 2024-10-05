@@ -158,21 +158,24 @@ protected:
     virtual bool frozenCredits_impl() const { return false; }
 };
 
-struct TmsNormalMap : public TmsCommon {
+struct TmsNormalMap : public TmsRaster {
 
-    std::string dataset;
     boost::optional<LandcoverDataset> landcover;
-    bool erodeMask;
 
-    TmsNormalMap(): erodeMask(false) {}
+    TmsNormalMap(): TmsRaster() {
+        format = RasterFormat::webp;
+        erodeMask = false;
+        transparent = false;
+        resampling = geo::GeoDataset::Resampling::cubic;
+    }
 
     static constexpr char driverName[] = "tms-normalmap";
 
 protected:
-    virtual void from_impl(const Json::Value &value);
-    virtual void to_impl(Json::Value &value) const;
-    virtual Changed changed_impl(const DefinitionBase &other) const;
-    virtual bool frozenCredits_impl() const { return false; }
+    void from_impl(const Json::Value &value) override;
+    void to_impl(Json::Value &value) const override;
+    Changed changed_impl(const DefinitionBase &other) const override;
+    bool frozenCredits_impl() const override { return false; }
 };
 
 struct TmsSpecularMap: public TmsCommon {

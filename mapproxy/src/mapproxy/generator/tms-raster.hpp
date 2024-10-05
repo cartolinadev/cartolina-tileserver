@@ -52,7 +52,7 @@ protected:
 } // namespace detail
 
 class TmsRaster
-    : private detail::TmsRasterMFB
+    : public detail::TmsRasterMFB
     , public TmsRasterBase
 {
 public:
@@ -88,8 +88,21 @@ protected:
         {}
     };
 
+    /* extra preparation in subclasses */
+    virtual void extraPrep() {}
+
 protected:
     virtual vr::BoundLayer boundLayer(ResourceRoot root) const;
+
+    DatasetDesc dataset() const;
+
+    boost::optional<mmapped::TileIndex> index_;
+
+    bool transparent() const;
+
+    /** Mask dataset path. Only when defined and not a RF tree.
+     */
+    boost::optional<std::string> maskDataset_;
 
 private:
     virtual void prepare_impl(Arsenal &arsenal);
@@ -104,7 +117,6 @@ private:
                                    , Sink &sink, Arsenal &arsenal
                                    , const ImageFlags &imageFlags
                                    = ImageFlags()) const;
-
 
     virtual void generateMetatile(const vts::TileId &tileId
                           , const TmsFileInfo &fi
@@ -123,11 +135,7 @@ private:
                                   , const TmsFileInfo &fi
                                   , Sink &sink
                                   , Arsenal&) const;
-    DatasetDesc dataset() const;
-
     RasterFormat format() const;
-
-    bool transparent() const;
 
     bool hasMask() const;
 
@@ -156,16 +164,10 @@ private:
 
     bool hasMetatiles_;
 
-    boost::optional<mmapped::TileIndex> index_;
-
     bool complexDataset_;
 
     // mask tree
     MaskTree maskTree_;
-
-    /** Mask dataset path. Only when defined and not a RF tree.
-     */
-    boost::optional<std::string> maskDataset_;
 };
 
 // inlines

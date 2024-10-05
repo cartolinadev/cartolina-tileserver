@@ -58,7 +58,7 @@ void registerDefinition(const Resource::Generator &type
                         , const std::function<DefinitionBase::pointer()>
                         &factory)
 {
-    std::cout << "Registering driver type " << type << ".\n";
+    std::cerr << "Registering definition type " << type << ".\n";
     registry().insert(Registry::value_type(type, factory));
 }
 

@@ -46,14 +46,26 @@ void encodeToWebP(const cv::Mat& img, std::vector<unsigned char>& buf) {
     uint8_t* output = nullptr;
     size_t outputSize;
 
-    if (img.type() != CV_8UC3) {
+    //LOG(debug) << "depth = " << img.depth() << ", channels = " << img.channels();
+
+    if (img.depth() != CV_8U || (img.channels() != 3 && img.channels() != 4))
         throw utility::makeError<InternalError>("Unsupported image type.");
+
+
+    if (img.type() == CV_8UC3) {
+
+        outputSize = WebPEncodeLosslessBGR(
+            img.data, width, height, stride, &output);
+    }
+
+    if (img.type() == CV_8UC4) {
+
+        outputSize = WebPEncodeLosslessBGRA(
+            img.data, width, height, stride, &output);
     }
 
     // note that we use the BGR (not the RGB) variant.
     // This is meant for normal maps.
-    outputSize = WebPEncodeLosslessBGR(
-        img.data, width, height, stride, &output);
 
     if (outputSize == 0) {
         throw utility::makeError<InternalError>("Failed to create WebP data");

@@ -25,9 +25,9 @@
  */
 
 
-//#include "mapproxy/resource.hpp"
+#include "mapproxy/resource.hpp"
 #include "utility/premain.hpp"
-//#include "utility/raise.hpp"
+#include "utility/raise.hpp"
 
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/as.hpp"
@@ -35,15 +35,17 @@
 #include "tms.hpp"
 #include "factory.hpp"
 
+namespace ut = utility;
+
 namespace resource {
 
 constexpr char TmsNormalMap::driverName[];
 
 MAPPROXY_DEFINITION_REGISTER(TmsNormalMap)
 
-void parseDefinition(TmsNormalMap &def, const Json::Value &value) {
+namespace {
 
-    Json::get(def.dataset, value, "dataset");
+void parseDefinition(TmsNormalMap &def, const Json::Value &value) {
 
     if (value.isMember("landcover")) {
 
@@ -56,18 +58,16 @@ void parseDefinition(TmsNormalMap &def, const Json::Value &value) {
         def.landcover = LandcoverDataset(ds, classdef);
     }
 
-    if (value.isMember("erodeMask")) {
-        Json::get(def.erodeMask, value,"erodeMask");
+    // sanity check
+    if (def.format != RasterFormat::webp) {
+
+        ut::raise<Json::Error>(
+            "Format %1% not supported in tms-normalmap, use webp", def.format);
     }
 
-    // common defition
-    def.TmsCommon::parse(value);
 }
 
 void buildDefinition(Json::Value &value, const TmsNormalMap &def) {
-
-    value["dataset"] = def.dataset;
-    value["erodeMask"] = def.erodeMask;
 
     if (def.landcover) {
         auto& lc(value["landcover"] = Json::objectValue);
@@ -75,19 +75,19 @@ void buildDefinition(Json::Value &value, const TmsNormalMap &def) {
         lc["dataset"] = def.landcover->dataset;
         lc["classdef"] = def.landcover->classdef;
     }
-
-    // common definition
-    def.TmsCommon::build(value);
 }
 
+} // namespace
 
 void TmsNormalMap::from_impl(const Json::Value &value) {
 
+    TmsRaster::from_impl(value);
     parseDefinition(*this, value);
 }
 
 void TmsNormalMap::to_impl(Json::Value &value) const {
 
+    TmsRaster::to_impl(value);
     buildDefinition(value, *this);
 }
 
@@ -95,15 +95,13 @@ Changed TmsNormalMap::changed_impl(const DefinitionBase &o) const {
 
     const auto &other(o.as<TmsNormalMap>());
 
+    //LOG(debug) << dataset << " <-> " << other.dataset;
+
     // non-safe changes
-    if (dataset != other.dataset) { return Changed::yes; }
     if (landcover != other.landcover) { return Changed::yes; }
 
-    // revision bump
-    if (erodeMask != other.erodeMask) { return Changed::withRevisionBump; }
-
     // common definition
-    return TmsCommon::changed_impl(o);
+    return TmsRaster::changed_impl(o);
 }
 
 

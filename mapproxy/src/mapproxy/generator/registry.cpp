@@ -41,6 +41,7 @@ Generator::Factory::findFactory(const Resource::Generator &type)
 void Generator::Factory::registerType(const Resource::Generator &type
                                       , const pointer &factory)
 {
+    std::cerr << "Registering driver type " << type << ".\n";
     registry().insert(Registry::value_type(type, factory));
 }
 

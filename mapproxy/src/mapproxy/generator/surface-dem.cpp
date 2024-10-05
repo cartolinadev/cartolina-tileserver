@@ -140,7 +140,6 @@ SurfaceDem::~SurfaceDem()
     removeFromRegistry();
 }
 
-
 void SurfaceDem::loadLandcoverClassdef() {
 
     Json::Value jclasses;

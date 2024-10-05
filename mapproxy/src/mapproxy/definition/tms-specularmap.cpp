@@ -41,6 +41,8 @@ constexpr char TmsSpecularMap::driverName[];
 
 MAPPROXY_DEFINITION_REGISTER(TmsSpecularMap)
 
+namespace {
+
 void parseDefinition(TmsSpecularMap &def, const Json::Value &value) {
 
     Json::get(def.dataset, value, "dataset");
@@ -68,6 +70,7 @@ void buildDefinition(Json::Value &value, const TmsSpecularMap &def) {
     def.TmsCommon::build(value);
 }
 
+} // namespace
 
 void TmsSpecularMap::from_impl(const Json::Value &value) {
 
