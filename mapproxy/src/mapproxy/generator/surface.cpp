@@ -520,8 +520,8 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
 
     bool optimize = false;
 
-    if (tileId.lod > 3) {
-        // we optimize normals for lods starting with 4, when tiles no
+    if (tileId.lod > 4) {
+        // we optimize normals for lods starting with 5, when tiles no
         // longer span greater parts of hemispheres. A more abstract
         // approach based on the reference frames specification would
         // be more rigorous.
