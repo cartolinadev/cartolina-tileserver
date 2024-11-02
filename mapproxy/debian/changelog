@@ -1,3 +1,11 @@
+vts-mapproxy (1.99cart23-2) testing; urgency=medium
+
+  * fixed saving of normalMaps flag in tileset.conf, minor parametric change
+    in surface normal map generation.
+  * versioning cleanup
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 11 Oct 2024 10:10:45 +0200
+
 vts-mapproxy (1.99cart23-0) testing; urgency=medium
 
   * normal maps in surfaces, tms-normalmap, tms-specularmap generators
