@@ -1,3 +1,10 @@
+vts-mapproxy (1.100cart23-3) testing; urgency=medium
+
+  * added 'schema' (maptiler or planetiler) to geodata-vector-tiled
+    definition, to allow for correct resolving of OSM ids in openfreemap
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sun, 24 Aug 2025 00:03:04 +0200
+
 vts-mapproxy (1.99cart23-2) testing; urgency=medium
 
   * fixed saving of normalMaps flag in tileset.conf, minor parametric change
