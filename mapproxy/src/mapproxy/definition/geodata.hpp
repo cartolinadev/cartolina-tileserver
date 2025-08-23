@@ -115,8 +115,10 @@ struct GeodataVectorTiled : GeodataVectorBase {
 
     virtual void from_impl(const Json::Value &value);
     virtual void to_impl(Json::Value &value) const;
+    
+    geo::heightcoding::Schema schema;
 
-    GeodataVectorTiled() {}
+    GeodataVectorTiled() : schema(geo::heightcoding::Schema::maptiler) {}
 
     static constexpr Resource::Generator::Type type
         = Resource::Generator::Type::geodata;

@@ -103,6 +103,7 @@ private:
     boost::variant<geo::vectorformat::GeodataConfig> formatConfig_;
 
     geo::heightcoding::Mode mode_;
+    geo::heightcoding::Schema schema_;
 };
 
 struct ShDemDataset {

@@ -350,6 +350,9 @@ void GeodataVectorTiled::generateGeodata(Sink &sink
     config.format = definition_.format;
     config.formatConfig = definition_.formatConfig;
     config.mode = definition_.mode;
+    config.schema = definition_.schema;
+    
+    LOG(debug) << "Schema: " << config.schema;
 
     if (cutting) {
         // clip whole tile to node extents

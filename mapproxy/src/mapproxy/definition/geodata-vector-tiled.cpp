@@ -53,6 +53,8 @@ void parseDefinition(GeodataVectorTiled &def, const Json::Value &value)
         def.maxSourceLod = boost::in_place();
         Json::get(*def.maxSourceLod, value, "maxSourceLod");
     }
+ 
+    Json::getOpt(def.schema, value, "schema");
 }
 
 void buildDefinition(Json::Value &value, const GeodataVectorTiled &def)
@@ -60,6 +62,8 @@ void buildDefinition(Json::Value &value, const GeodataVectorTiled &def)
     if (def.maxSourceLod) {
         value["maxSourceLod"] = *def.maxSourceLod;
     }
+    
+    value["schema"] = boost::lexical_cast<std::string>(def.schema);
 }
 
 } // namespace
@@ -88,6 +92,11 @@ Changed GeodataVectorTiled::changed_impl(const DefinitionBase &o)
     if (changed == Changed::yes) { return changed; }
 
     const auto &other(o.as<GeodataVectorTiled>());
+    
+    // schema leads to revision bump
+    if (schema != other.schema) {
+        return Changed::withRevisionBump;
+    }
 
     // max source lod leads to revision bump
     if (maxSourceLod != other.maxSourceLod) {

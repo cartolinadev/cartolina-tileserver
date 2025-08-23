@@ -172,6 +172,7 @@ ShHeightCodeConfig
     , format_(config.format)
     , formatConfig_(config.formatConfig)
     , mode_(config.mode)
+    , schema_(config.schema)
 {
     if (config.workingSrs) {
         workingSrs_.assign(config.workingSrs->srs.data()
@@ -209,6 +210,7 @@ ShHeightCodeConfig::operator geo::heightcoding::Config() const
     config.format = format_;
     config.formatConfig = formatConfig_;
     config.mode = mode_;
+    config.schema = schema_;
 
     return config;
 }
