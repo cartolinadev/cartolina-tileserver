@@ -665,15 +665,10 @@ SurfaceBase::extraProperties(const Definition &def) const
 
     const auto &r(resource());
 
-    if (def.introspection.tms.empty()) {
-        introspection::add
-            (extra, Resource::Generator::Type::tms, introspection::LocalLayer
-             ({}, systemGroup(), "tms-raster-patchwork")
-             , r, findResource);
-    } else {
-        introspection::add(extra, Resource::Generator::Type::tms
+    /* we no longer add patchwork by default: if the tms
+       list is empty, the surface will render bare (and illuminated). */
+    introspection::add(extra, Resource::Generator::Type::tms
                            , def.introspection.tms, r, findResource);
-    }
 
     introspection::add(extra, Resource::Generator::Type::geodata
                        , def.introspection.geodata, r, findResource);
@@ -681,6 +676,9 @@ SurfaceBase::extraProperties(const Definition &def) const
     if (def.introspection.position) {
         extra.position = *def.introspection.position;
     }
+
+    // no tms -> ensure default illumination in extra.view.options.
+    if (def.introspection.tms.empty()) introspection::addIllumination(extra);
 
     // browser options (must be Json::Value!)
     extra.browserOptions = def.introspection.browserOptions;

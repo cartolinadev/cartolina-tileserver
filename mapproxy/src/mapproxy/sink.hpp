@@ -190,18 +190,26 @@ inline void Sink::error(const T &exc)
 inline void Sink::error() { error(std::current_exception()); }
 
 inline void Sink::content(const std::string &data, const FileInfo &stat) {
-    sink_->content(data, update(stat), &stat.headers);
+
+    http::Header::list headers_(stat.headers);
+    headers_.emplace_back("Access-Control-Allow-Origin", "*");
+    sink_->content(data, update(stat), &headers_);
 }
 
 template <typename T>
 inline void Sink::content(const std::vector<T> &data, const FileInfo &stat) {
-    sink_->content(data, update(stat), &stat.headers);
+
+    http::Header::list headers_(stat.headers);
+    headers_.emplace_back("Access-Control-Allow-Origin", "*");
+    sink_->content(data, update(stat), &headers_);
 }
 
 inline void Sink::content(const void *data, std::size_t size
-                          , const FileInfo &stat, bool needCopy)
-{
-    sink_->content(data, size, update(stat), needCopy, &stat.headers);
+                          , const FileInfo &stat, bool needCopy) {
+
+    http::Header::list headers_(stat.headers);
+    headers_.emplace_back("Access-Control-Allow-Origin", "*");
+    sink_->content(data, size, update(stat), needCopy, &headers_);
 }
 
 inline void

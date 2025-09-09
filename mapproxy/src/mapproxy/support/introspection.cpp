@@ -31,6 +31,7 @@
 
 #include "../error.hpp"
 #include "introspection.hpp"
+#include "jsoncpp/json.hpp"
 
 namespace fs = boost::filesystem;
 namespace vr = vtslibs::registry;
@@ -104,5 +105,45 @@ void add(vts::ExtraTileSetProperties &extra, Resource::Generator::Type type
         }
     }
 }
+
+void addIllumination(vts::ExtraTileSetProperties &extra)
+{
+    Json::Value options(Json::objectValue);
+
+    if (! extra.view.options.empty()) {
+
+        if (const auto *asJson =
+            boost::any_cast<Json::Value>(&extra.view.options)) {
+
+            if (! asJson->isObject()) {
+                LOG(warn2) << "introspection: extra.view.options is not an "
+                    "object, cannot add illumination.";
+                return; // give up safely
+            }
+
+            options = *asJson; // copy what's there
+
+        } else {
+            LOG(warn2) << "introspection: extra.view.options does not hold "
+                "Json::Value, cannot add illumination.";
+            return;
+        }
+    }
+
+    // If illumination not present, inject default.
+    if (!options.isMember("illumination")) {
+
+        Json::Value illumination(Json::objectValue);
+        illumination["ambientCoef"] = 0;
+        Json::Value light(Json::arrayValue);
+        light.append("tracking");
+        light.append(315);
+        light.append(45);
+        illumination["light"] = light;
+        options["illumination"] = illumination;
+        extra.view.options = options;
+    }
+}
+
 
 } // namespace introspection

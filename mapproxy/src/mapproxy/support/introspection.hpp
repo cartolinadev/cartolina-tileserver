@@ -86,6 +86,11 @@ Resource::OptId idFrom(const Json::Value &introspection
 void idTo(Json::Value &introspection, const std::string &key
           , const Resource::OptId &resource);
 
+/** Ensures default illumination in extra.view.options when no tm
+ *  introspection layers are defined.
+ */
+void addIllumination(vts::ExtraTileSetProperties &extra);
+
 // inlines
 
 inline bool RemoteLayer::operator<(const RemoteLayer &o) const {

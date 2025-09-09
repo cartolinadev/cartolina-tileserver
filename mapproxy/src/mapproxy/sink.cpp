@@ -126,6 +126,7 @@ public:
                              , cacheControl(fileClass, fileClassSettings
                                             , forcedCacheControl)))
     {
+        headers_.emplace_back("Access-Control-Allow-Origin", "*");
         // do not fail on eof
         stream->get().exceptions(std::ios::badbit);
 
