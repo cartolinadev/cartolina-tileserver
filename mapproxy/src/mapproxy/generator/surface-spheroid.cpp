@@ -130,7 +130,14 @@ void SurfaceSpheroid::prepare_impl(Arsenal&)
     properties_.position.verticalExtent
         = math::size(referenceFrame().division.extents).height;
 
+    // yes, we provide normal maps
     properties_.hasNormalMaps = true;
+
+    // no. we no longer provide a 2d interface
+    properties_.has2dInterface = false;
+
+    // no, we do not provide textures
+    properties_.hasTextures = false;
 
     properties_.position.verticalFov = config().defaultFov;
 
@@ -197,8 +204,6 @@ vts::MapConfig SurfaceSpheroid::mapConfig_impl(ResourceRoot root) const
             (properties_, resource().registry
              , extraProperties(definition_), path));
 
-    // yes, we do provide normal maps
-    mc.surfaces.front().hasNormalMaps = true;
 
     // position
     if (!definition_.introspection.position) {

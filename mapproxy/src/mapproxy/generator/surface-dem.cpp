@@ -182,7 +182,16 @@ void SurfaceDem::prepare_impl(Arsenal&)
     properties_.id = r.id.fullId();
     properties_.referenceFrame = r.referenceFrame->id;
     properties_.credits = asIntSet(r.credits);
+
+    // yes, we provide normal maps
     properties_.hasNormalMaps = true;
+
+    // no, we no longer provide a 2d interface
+    properties_.has2dInterface = false;
+
+    // no, we do not provide textures
+    properties_.hasTextures = false;
+
     if (definition_.textureLayerId) {
         properties_.boundLayers.insert(definition_.textureLayerId);
     }
@@ -254,12 +263,6 @@ vts::MapConfig SurfaceDem::mapConfig_impl(ResourceRoot root) const
     auto mc(vts::mapConfig
             (properties_, resource().registry, extraProperties(definition_)
              , path));
-
-    // force 2d interface existence
-    mc.surfaces.front().has2dInterface = true;
-
-    // we always serve normal maps
-    mc.surfaces.front().hasNormalMaps = true;
 
     if (!definition_.introspection.position) {
         // no introspection position, generate some
