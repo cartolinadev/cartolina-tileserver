@@ -531,6 +531,9 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     geo::normalmap::convertNormals(
         normalMap, nodeInfo.extents(), conv.conv(), optimize);
 
+    // octahedron encoding
+    geo::normalmap::encodeOct(normalMap);
+
     // obtain the final image, write to stream
     auto sfi(fi.sinkFileInfo());
 

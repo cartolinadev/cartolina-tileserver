@@ -1,3 +1,12 @@
+vts-mapproxy (1.101cart23) UNRELEASED; urgency=medium
+
+  * normalmaps are octahedron-encoded
+  * introspection map for surfaces adds default illumination if not tms is
+    defined in view
+  * permissive CORS header added to all content
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Wed, 10 Sep 2025 20:54:10 +0200
+
 vts-mapproxy (1.100cart23-3) testing; urgency=medium
 
   * added 'schema' (maptiler or planetiler) to geodata-vector-tiled

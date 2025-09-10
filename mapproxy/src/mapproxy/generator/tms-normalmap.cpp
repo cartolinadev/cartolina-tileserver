@@ -242,6 +242,9 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     geo::normalmap::convertNormals(
         normalMap, nodeInfo.extents(), conv.conv(), optimize);
 
+    // octahedron encoding
+    geo::normalmap::encodeOct(normalMap);
+
     // obtain the final image
     cv::Mat img = geo::normalmap::exportToBGR(normalMap);
 
