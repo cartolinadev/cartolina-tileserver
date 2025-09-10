@@ -56,8 +56,11 @@ protected:
     bool updateProperties(const Definition &def);
     bool loadFiles(const Definition &definition);
 
+
     vts::ExtraTileSetProperties extraProperties(const Definition &def)
         const;
+
+    virtual unsigned int generatorRevision() const { return 0; }
 
 protected:
     const vre::Tms& getTms() const;

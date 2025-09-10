@@ -93,42 +93,45 @@ protected:
     virtual void extraPrep() {}
 
 protected:
-    virtual vr::BoundLayer boundLayer(ResourceRoot root) const;
 
     DatasetDesc dataset() const;
 
     boost::optional<mmapped::TileIndex> index_;
 
-    bool transparent() const;
+    bool transparent() const override;
 
-    RasterFormat format() const;
+    RasterFormat format() const override;
+
+    virtual int generatorRevision() const override;
+
+    boost::any boundLayerOptions() const override;
 
     /** Mask dataset path. Only when defined and not a RF tree.
      */
     boost::optional<std::string> maskDataset_;
 
 private:
-    virtual void prepare_impl(Arsenal &arsenal);
-    virtual vts::MapConfig mapConfig_impl(ResourceRoot root) const;
+    void prepare_impl(Arsenal &arsenal) override;
+    vts::MapConfig mapConfig_impl(ResourceRoot root) const override;
 
-    virtual Task generateVtsFile_impl(const FileInfo &fileInfo
-                                      , Sink &sink) const;
+    Task generateVtsFile_impl(const FileInfo &fileInfo
+                                      , Sink &sink) const override;
 
-    virtual void generateTileImage(const vts::TileId &tileId
+    void generateTileImage(const vts::TileId &tileId
                                    , const Sink::FileInfo &fi
                                    , RasterFormat format
                                    , Sink &sink, Arsenal &arsenal
                                    , const ImageFlags &imageFlags
-                                   = ImageFlags()) const;
+                                   = ImageFlags()) const override;
 
-    virtual void generateMetatile(const vts::TileId &tileId
+    void generateMetatile(const vts::TileId &tileId
                           , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const;
+                          , Sink &sink, Arsenal &arsenal) const override;
 
 
-    virtual void generateTileMask(const vts::TileId &tileId
+    void generateTileMask(const vts::TileId &tileId
                           , const TmsFileInfo &fi
-                          , Sink &sink, Arsenal &arsenal) const;
+                          , Sink &sink, Arsenal &arsenal) const override;
 
     void generateTileMask_impl(const vts::TileId &tileId
                           , const TmsFileInfo &fi
@@ -138,9 +141,9 @@ private:
                                   , const TmsFileInfo &fi
                                   , Sink &sink
                                   , Arsenal&) const;
-    bool hasMask() const;
+    bool hasMask() const override;
 
-    virtual bool hasMetatiles() const { return hasMetatiles_; }
+    virtual bool hasMetatiles() const override { return hasMetatiles_; }
 
     void update(vr::BoundLayer &bl) const;
 

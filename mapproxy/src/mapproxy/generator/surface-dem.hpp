@@ -83,6 +83,8 @@ private:
 
     void loadLandcoverClassdef();
 
+    virtual unsigned int generatorRevision() const;
+
     const Definition &definition_;
 
     /** Path to original dataset (must contain overviews)

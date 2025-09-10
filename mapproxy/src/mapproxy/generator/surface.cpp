@@ -654,6 +654,8 @@ SurfaceBase::extraProperties(const Definition &def) const
 {
     vts::ExtraTileSetProperties extra;
 
+    extra.generatorRevision = generatorRevision();
+
     const auto &findResource([this](Resource::Generator::Type type
                                     , const Resource::Id &id)
                              -> const Resource*

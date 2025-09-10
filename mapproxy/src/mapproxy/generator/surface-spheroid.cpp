@@ -71,6 +71,8 @@ namespace generator {
 
 namespace {
 
+unsigned int GeneratorRevision(1);
+
 struct Factory : Generator::Factory {
     virtual Generator::pointer create(const Generator::Params &params)
     {
@@ -203,7 +205,6 @@ vts::MapConfig SurfaceSpheroid::mapConfig_impl(ResourceRoot root) const
     auto mc(vts::mapConfig
             (properties_, resource().registry
              , extraProperties(definition_), path));
-
 
     // position
     if (!definition_.introspection.position) {
@@ -626,6 +627,10 @@ void SurfaceSpheroid::generateNavtile(const vts::TileId &tileId
     }
 
     sink.content(os.str(), fi.sinkFileInfo());
+}
+
+unsigned int SurfaceSpheroid::generatorRevision() const {
+    return GeneratorRevision;
 }
 
 } // namespace generator

@@ -41,7 +41,7 @@ namespace {
 
 // upgrade whenever functionality is altered to warrant invalidation
 // of all cached generator output in production environment
-int generatorRevision_(0);
+int generatorRevision_(1);
 
 // register generator via pre-main static initialization
 

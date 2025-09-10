@@ -230,6 +230,15 @@ RasterFormat TmsRaster::format() const
     return transparent() ? RasterFormat::png : definition_.format;
 }
 
+boost::any TmsRaster::boundLayerOptions() const {
+    return definition_.options;
+}
+
+
+int TmsRaster::generatorRevision() const {
+    return GeneratorRevision;
+}
+
 bool TmsRaster::transparent_impl() const
 {
     return definition_.transparent;
@@ -241,6 +250,8 @@ bool TmsRaster::hasMask_impl() const
     return true;
 }
 
+
+/* // identical to TmsRasterBase::boundLayer
 vr::BoundLayer TmsRaster::boundLayer(ResourceRoot root) const
 {
     const auto &res(resource());
@@ -263,7 +274,7 @@ vr::BoundLayer TmsRaster::boundLayer(ResourceRoot root) const
         if (hasMetatiles_) {
             const auto fname
                 (utility::format("{lod}-{x}-{y}.meta?gr=%d%s"
-                                 , GeneratorRevision
+                                 , generatorRevision()
                                  , RevisionWrapper(res.revision, "&")));
 
             bl.metaUrl = prependRoot(fname, resource(), root);
@@ -279,7 +290,7 @@ vr::BoundLayer TmsRaster::boundLayer(ResourceRoot root) const
 
     // done
     return bl;
-}
+}*/
 
 vts::MapConfig TmsRaster::mapConfig_impl(ResourceRoot root)
     const

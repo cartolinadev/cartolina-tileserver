@@ -67,7 +67,13 @@ private:
                                  , const SurfaceFileInfo &fileInfo
                                  , Arsenal &arsenal) const;
 
+
+    virtual unsigned int generatorRevision() const;
+
+
     const Definition &definition_;
+
+
 };
 
 } // namespace generator
