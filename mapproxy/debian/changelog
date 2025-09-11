@@ -1,4 +1,12 @@
-vts-mapproxy (1.101cart23) UNRELEASED; urgency=medium
+vts-mapproxy (1.102cart23) testing; urgency=medium
+
+  * bumped generator revision for surface-dem, surface-spheroid and
+    tms-normalmap generators due to the move to octahedron-encoded
+    normal maps
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 11 Sep 2025 01:59:05 +0200
+
+vts-mapproxy (1.101cart23) testing; urgency=medium
 
   * normalmaps are octahedron-encoded
   * introspection map for surfaces adds default illumination if not tms is
