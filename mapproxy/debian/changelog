@@ -1,3 +1,9 @@
+vts-mapproxy (1.103cart23) testing; urgency=medium
+
+  * Change of path in vts-libs builtin browser (vts-browser-js --> cartolina.js)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 09 Oct 2025 00:52:04 +0200
+
 vts-mapproxy (1.102cart23) testing; urgency=medium
 
   * bumped generator revision for surface-dem, surface-spheroid and
