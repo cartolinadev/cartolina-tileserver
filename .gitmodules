@@ -6,10 +6,10 @@
 	url = https://github.com/melowntech/buildsys-cmake.git
 [submodule "externals/vts-libs"]
 	path = externals/vts-libs
-	url = git@macon:melowntech/vts-libs.git
+	url = https://github.com/cartolinadev/vts-libs.git
 [submodule "externals/gdal-drivers"]
 	path = externals/gdal-drivers
-	url = git@macon:melowntech/gdal-drivers.git
+	url = https://github.com/cartolinadev/gdal-drivers.git
 [submodule "externals/libpydbglog"]
 	path = externals/libpydbglog
 	url = https://github.com/melowntech/libpydbglog.git
@@ -21,7 +21,7 @@
 	url = https://github.com/melowntech/libutility.git
 [submodule "externals/libgeo"]
 	path = externals/libgeo
-	url = git@macon:melowntech/libgeo.git
+	url = https://github.com/cartolinadev/libgeo.git
 [submodule "externals/libgeometry"]
 	path = externals/libgeometry
 	url = https://github.com/melowntech/libgeometry.git
@@ -39,10 +39,10 @@
 	url = https://github.com/melowntech/libjsoncpp.git
 [submodule "externals/libmath"]
 	path = externals/libmath
-	url = git@macon:melowntech/libmath.git
+	url = https://github.com/cartolinadev/libmath.git
 [submodule "externals/libservice"]
 	path = externals/libservice
-	url = git@macon:melowntech/libservice.git
+	url = https://github.com/cartolinadev/libservice.git
 [submodule "externals/libpysupport"]
 	path = externals/libpysupport
 	url = https://github.com/melowntech/libpysupport.git
