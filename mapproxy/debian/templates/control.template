@@ -1,32 +1,38 @@
-Source: vts-mapproxy
+Source: cartolina-tileserver
 Section: misc
 Priority: extra
-Maintainer: Vaclav Blazek <vaclav.blazek@citationtech.net>
+Maintainer: Ondrej Prochazka <ondrej.prochazka@montevallo.cz>
 Build-Depends: VAR_BuildDepends
 Standards-Version: 3.8.4
 Homepage: https://www.melown.com/maps
 
-Package: vts-mapproxy
+Package: cartolina-tileserver
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
-         , vts-mapproxy-tools (= ${binary:Version})
-Replaces: ctt-vts-mapproxy (<< 1.0)
+         , vts-cartolina-tools (= ${binary:Version})
+Replaces: vts-mapproxy
+Provides: vts-mapproxy
+Conflicts: vts-mapproxy
 Breaks: ctt-vts-mapproxy (<< 1.0)
-Description: VTS MapProxy backend server
+Description: cartolina tile server
  Backend HTTP daemon.
 
-Package: vts-mapproxy-tools
+Package: cartolina-tileserver-tools
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
-Replaces: ctt-vts-mapproxy-tools (<< 1.0)
 Breaks: ctt-vts-mapproxy-tools (<< 1.0)
+Replaces: vts-mapproxy-tools
+Provides: vts-mapproxy-tools
+Conflicts: vts-mapproxy
 Description: VTS MapProxy backend server tools
- Contains collection of tools for mapproxy dataset preparation.
+ Contains collection of tools for tileserver dataset preparation.
 
-Package: vts-mapproxy-dbg
+Package: cartolina-tileserver-dbg
 Architecture: any
-Depends: ${misc:Depends}, vts-mapproxy (= ${binary:Version})
-         , vts-mapproxy-tools (= ${binary:Version})
-Replaces: ctt-vts-mapproxy-dbg (<< 1.0)
+Depends: ${misc:Depends}, cartolina-tileserver (= ${binary:Version})
+         , cartolina-tileserver-tools (= ${binary:Version})
+Replaces: vts-mapproxy-dbg
+Provides: vts-mapproxy-dbg
+Conflicts: vts-mapproxy-dbg
 Breaks: ctt-vts-mapproxy-dbg (<< 1.0)
-Description: Debug Symbols for vts-mapproxy*
+Description: Debug Symbols for cartolina-tileserver*
