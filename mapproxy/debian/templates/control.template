@@ -9,21 +9,19 @@ Homepage: https://www.melown.com/maps
 Package: cartolina-tileserver
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
-         , vts-cartolina-tools (= ${binary:Version})
+         , cartolina-tileserver-tools (= ${binary:Version})
 Replaces: vts-mapproxy
 Provides: vts-mapproxy
 Conflicts: vts-mapproxy
-Breaks: ctt-vts-mapproxy (<< 1.0)
-Description: cartolina tile server
+Description: backend server daemon for cartolina
  Backend HTTP daemon.
 
 Package: cartolina-tileserver-tools
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
-Breaks: ctt-vts-mapproxy-tools (<< 1.0)
 Replaces: vts-mapproxy-tools
 Provides: vts-mapproxy-tools
-Conflicts: vts-mapproxy
+Conflicts: vts-mapproxy-tools
 Description: VTS MapProxy backend server tools
  Contains collection of tools for tileserver dataset preparation.
 
@@ -34,5 +32,4 @@ Depends: ${misc:Depends}, cartolina-tileserver (= ${binary:Version})
 Replaces: vts-mapproxy-dbg
 Provides: vts-mapproxy-dbg
 Conflicts: vts-mapproxy-dbg
-Breaks: ctt-vts-mapproxy-dbg (<< 1.0)
 Description: Debug Symbols for cartolina-tileserver*

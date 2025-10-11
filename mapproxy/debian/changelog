@@ -1,9 +1,21 @@
-cartolina-tileserver (1.105) UNRELEASED; urgency=medium
+cartolina-tileserver (1.108) testing; urgency=medium
+
+  * fixed dependencies (for real)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 11 Oct 2025 01:40:57 +0200
+
+cartolina-tileserver (1.106) testing; urgency=medium
+
+  * fixed dependencies
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 11 Oct 2025 01:12:57 +0200
+
+cartolina-tileserver (1.105ubuntu1) testing; urgency=medium
 
   * vts-mapproxy becomes cartolina-tileserver
   * builtin browser default path changes
 
- -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 10 Oct 2025 14:57:17 +0200
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 11 Oct 2025 01:12:32 +0200
 
 vts-mapproxy (1.103cart23) testing; urgency=medium
 
