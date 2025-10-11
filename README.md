@@ -2,10 +2,9 @@
 
 # `cartolina-tileserver`
 
-[**`cartolina-tileserver`**](https://github.com/cartolinadev/cartolina-tileserver) is 
-a 3D geospatial data streaming server. It's the primary backend component of 
-[cartolina](http://cartolina.dev/), an experimental software stack for web-based
-3D terrain cartography.
+**`cartolina-tileserver`** is a 3D geospatial data streaming server. It's the 
+primary backend component of [cartolina](http://cartolina.dev/), an experimental 
+software stack for web-based 3D terrain cartography.
 
 The tile server provides on-the-fly access to an array of raster and vector data
 formats and serves those data in formats optimized for 3D streaming and 
@@ -17,7 +16,7 @@ in 2017-2023 and which is now officially discontinued.
 
 ## Features
 
-* dynamic TIN (terrain meshes) generation from DEMs (digital elevation models)
+* dynamic TIN (terrain mesh) generation from DEMs (digital elevation models)
 * on-the-fly CRS conversion for *massive* raster datasets
 * on-the-fly configurable shaded relief from DEMs
 * DEM-based normal maps
@@ -46,9 +45,9 @@ worked with the old vts-mapproxy should still work with `cartolina-tileserver`.
 
 ## Documentation
 
-There is currently no native documentation for `cartolina-tileserver`, but you
-can rely on the existing documentation of vts-mapproxy, which is still
-relevant. It is available at the [vts-geospatial website](http://vts-geospatial.org/en/latest/reference/server/mapproxy/).
+There is currently no original documentation for `cartolina-tileserver`, but you
+can rely on the [legacy documentation of vts-mapproxy](https://web.archive.org/web/20230206094802/https://vts-geospatial.org/reference/server/mapproxy/index.html#mapproxy), which is still
+relevant.
 
 If you want to use the new generators you need to figure things out [from the source code](mapproxy/src/mapproxy/definition/tms.hpp) at the 
 moment. But if you have the technological dexterity to run the tile server
@@ -292,13 +291,19 @@ mapproxy --config mapproxy.conf
 **NOTE:** You might need to add also `--registry` parameter, and point it to
 previously compiled [`vts-registry`](https://github.com/melowntech/vts-registry).
 
-Description of the configuration file can be found in our [user documentation](http://melown.readthedocs.io/en/latest/server/mapproxy.html).
-
 You will probably also need to create an nginx reverse proxy. This is exactly
 what the `vts-backend` metapackage takes care of, if you choose to go without 
 it, you need to do these steps manually. 
 
+
 ## How to contribute
 
 Check the [CONTRIBUTING.md](CONTRIBUTING.md) file.
+
+
+## License
+
+`cartolina-tileserver` is open source under a permissive BSD 2-clause license. See
+[LICENSE](LICENSE) for details.
+
 
