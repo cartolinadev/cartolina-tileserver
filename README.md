@@ -1,4 +1,4 @@
-<img width="320" alt="VTS Browser JS" src="https://github.com/cartolinadev/assets/blob/master/brand/cartolina-logo.png?raw=true">
+<p align="center><img width="320" alt="VTS Browser JS" src="https://github.com/cartolinadev/assets/blob/main/brand/cartolina-logo.png?raw=true"></p>
 
 # `cartolina-tileserver`
 
