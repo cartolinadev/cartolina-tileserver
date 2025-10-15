@@ -70,9 +70,9 @@ I strongly encourage you to use the binary package distribution if you want to r
 To use the Debian APT package repository on Ubuntu 22.04 (Jammy Jellyfish) or 
 compatible systems, create an APT source file with your favorite editor
 
-   ```bash
-   sudo nano /etc/apt/sources.list.d/tspl-re.sources
-   ```
+```bash
+sudo nano /etc/apt/sources.list.d/tspl-re.sources
+```
 
 add exactly the following contents
 
@@ -115,32 +115,32 @@ Signed-By:
    
 and do
 
-   ```bash
-   $ sudo apt update
-   ```
+```bash
+$ sudo apt update
+```
 
 Then, install the `vts-backend` metapackage. Apart from installing 
 `cartolina-tileserver` itself, it takes care of the complex task of creating 
 a mapproxy configuration file and configuring nginx reverse proxy for your 
 tileserver.
 
-    ```bash
-    sudo apt install vts-backend 
-    ```
+```bash
+sudo apt install vts-backend 
+```
 
 Now you can access the `cartolina-tileserver` introspection API by pointing
 your web browser to
 
-    ```
-    http://localhost:8070/mapproxy
-    ```
+```
+http://localhost:8070/mapproxy
+```
 
 If you prefer to do the preceding step manually, you can install just the 
 tileserver:
 
-    ```bash
-    sudo apt install cartolina-tileserver 
-    ```
+```bash
+sudo apt install cartolina-tileserver 
+```
 
 ## Configuring and running the tile server
 
