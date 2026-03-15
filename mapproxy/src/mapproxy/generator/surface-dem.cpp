@@ -61,6 +61,7 @@
 
 #include "../error.hpp"
 #include "../support/metatile.hpp"
+#include "../support/demtin.hpp"
 #include "../support/mesh.hpp"
 #include "../support/srs.hpp"
 #include "../support/geo.hpp"
@@ -422,18 +423,23 @@ AugmentedMesh SurfaceDem
                                    , vts::NodeInfo::CoverageType::grid));
 
     DemSampler ds(*dem, coverage, definition_.heightFunction);
+    AugmentedMesh mesh;
+    if (definition_.mesher == Definition::Mesher::rtin) {
+        mesh = demTinMesh({ *dem, nodeInfo, coverage
+                            , definition_.heightFunction, defaultHeight }
+                          , {});
+    } else {
+        mesh = meshFromNode(nodeInfo, size
+                            , [&](int i, int j, double &h) -> bool
+        {
+            return ds(i, j, h);
+        });
 
-    // generate mesh
-    auto mesh(meshFromNode(nodeInfo, size
-                               , [&](int i, int j, double &h) -> bool
-    {
-        return ds(i, j, h);
-    }));
+        // simplify
+        simplifyMesh(mesh.mesh, nodeInfo, tileFacesCalculator, dem_.geoidGrid);
+    }
     mesh.textureLayerId = definition_.textureLayerId;
     mesh.geoidGrid = dem_.geoidGrid;
-
-    // simplify
-    simplifyMesh(mesh.mesh, nodeInfo, tileFacesCalculator, dem_.geoidGrid);
 
     // done for now
     return mesh;

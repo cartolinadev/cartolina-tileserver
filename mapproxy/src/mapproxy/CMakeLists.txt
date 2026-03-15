@@ -4,6 +4,7 @@ set(mapproxy-core_SOURCES
   error.hpp
   resource.hpp resource.cpp
   support/metatile.hpp support/metatile.cpp
+  support/demtin.hpp support/demtin.cpp
   support/mesh.hpp support/mesh.cpp
   support/geo.hpp support/geo.cpp
   support/coverage.hpp support/coverage.cpp

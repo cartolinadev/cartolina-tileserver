@@ -31,6 +31,7 @@
 #include <boost/filesystem.hpp>
 
 #include "geo/geodataset.hpp"
+#include "utility/enum-io.hpp"
 
 #include "../support/geo.hpp"
 #include "../resource.hpp"
@@ -93,15 +94,19 @@ private:
 };
 
 struct SurfaceDem : public Surface {
+    enum class Mesher {
+        gridSimplify, rtin
+    };
 
     DemDataset dem;
     boost::optional<LandcoverDataset> landcover;
     boost::optional<boost::filesystem::path> mask;
     unsigned int textureLayerId;
     boost::optional<std::string> heightcodingAlias;
+    Mesher mesher;
 
 
-    SurfaceDem() : textureLayerId() {}
+    SurfaceDem() : textureLayerId(), mesher(Mesher::gridSimplify) {}
 
     static constexpr char driverName[] = "surface-dem";
 
@@ -114,7 +119,11 @@ private:
     }
 };
 
+UTILITY_GENERATE_ENUM_IO(SurfaceDem::Mesher,
+    ((gridSimplify)("grid-simplify"))
+    ((rtin))
+)
+
 } // namespace resource
 
 #endif // mapproxy_definition_surface_hpp_included_
-

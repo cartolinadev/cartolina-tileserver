@@ -78,6 +78,10 @@ void parseDefinition(SurfaceDem &def, const Json::Value &value)
         Json::get(*def.heightcodingAlias, value, "heightcodingAlias");
     }
 
+    if (value.isMember("mesher")) {
+        Json::get(def.mesher, value, "mesher");
+    }
+
     def.parse(value);
 }
 
@@ -105,6 +109,8 @@ void buildDefinition(Json::Value &value, const SurfaceDem &def)
         value["heightcodingAlias"] = *def.heightcodingAlias;
     }
 
+    value["mesher"] = boost::lexical_cast<std::string>(def.mesher);
+
     def.build(value);
 }
 
@@ -127,6 +133,7 @@ Changed SurfaceDem::changed_impl(const DefinitionBase &o) const
     if (dem != other.dem) { return Changed::yes; }
     if (mask != other.mask) { return Changed::yes; }
     if (textureLayerId != other.textureLayerId) { return Changed::yes; }
+    if (mesher != other.mesher) { return Changed::yes; }
 
     if (landcover != other.landcover) { return Changed::yes; }
 

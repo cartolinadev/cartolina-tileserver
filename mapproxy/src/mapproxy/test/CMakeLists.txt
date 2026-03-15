@@ -15,3 +15,12 @@ target_link_libraries(mapproxy-generate-tileindex ${MODULE_LIBRARIES})
 target_compile_definitions(mapproxy-generate-tileindex PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(mapproxy-generate-tileindex)
 set_target_version(mapproxy-generate-tileindex ${vts-mapproxy_VERSION})
+
+define_module(BINARY mapproxy-tests-demtin
+  DEPENDS mapproxy-core)
+
+add_executable(mapproxy-tests-demtin EXCLUDE_FROM_ALL
+  demtin.cpp)
+target_link_libraries(mapproxy-tests-demtin ${MODULE_LIBRARIES})
+target_compile_definitions(mapproxy-tests-demtin PRIVATE ${MODULE_DEFINITIONS})
+buildsys_binary(mapproxy-tests-demtin)
