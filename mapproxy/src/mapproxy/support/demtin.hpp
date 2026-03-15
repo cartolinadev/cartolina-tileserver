@@ -36,29 +36,74 @@
 
 namespace demtin {
 
+/** Computes eigenvalues of a 2x2 symmetric Hessian matrix.
+ *
+ * @param hxx second derivative in X direction
+ * @param hxy mixed second derivative
+ * @param hyy second derivative in Y direction
+ * @return pair of eigenvalues ordered from smaller to larger
+ */
 std::pair<double, double> eigenvalues(double hxx, double hxy, double hyy);
 
+/** Computes curvature saliency from Hessian coefficients.
+ *
+ * Negative principal curvatures increase saliency; the second negative
+ * eigenvalue is weighted by @p alpha to slightly prefer peak-like features
+ * over ridge-like ones.
+ *
+ * @param hxx second derivative in X direction
+ * @param hxy mixed second derivative
+ * @param hyy second derivative in Y direction
+ * @param alpha weight of the second negative eigenvalue
+ * @return non-negative curvature saliency
+ */
 double curvatureSaliency(double hxx, double hxy, double hyy, double alpha);
 
+/** Normalizes geometric error by tile scale.
+ *
+ * @param error absolute geometric error in tile SRS units
+ * @param tileScale normalization scale, typically max(tileWidth, tileHeight)
+ * @return normalized error
+ */
 double normalizedError(double error, double tileScale);
 
 } // namespace demtin
 
 struct DemTinOptions {
+    /** Maximum number of output faces. */
     int maxFaces = 3000;
+    /** Weight of the curvature term in the split error metric. */
     double curvatureWeight = 1.0;
+    /** Relative preference of peak-like features over ridge-like features. */
     double peakBonusAlpha = 0.75;
+    /** Early-exit threshold expressed as a fraction of tile size. */
     double earlyStopFraction = 0.01;
 };
 
 struct DemTinInput {
+    /** Warped DEM in grid registration, typically 129x129 samples. */
     const cv::Mat &dem;
+    /** Tile metadata and extents used for geometry generation. */
     const vts::NodeInfo &nodeInfo;
+    /** Validity/coverage mask for DEM samples. */
     const vts::NodeInfo::CoverageMask &coverage;
+    /** Optional post-processing of sampled heights. */
     const HeightFunction::pointer &heightFunction;
-    OptHeight defaultHeight;
 };
 
+/** Builds a terrain mesh directly from a DEM tile using adaptive RTIN refinement.
+ *
+ * The implementation follows the standard right-triangulated irregular network
+ * (RTIN) idea and adaptive error-driven terrain refinement: it starts from two
+ * root triangles and repeatedly splits the current highest-error triangle until
+ * the face budget is exhausted or the normalized error drops below a threshold.
+ * See Evans, Kirkpatrick, Townsend (Algorithmica, 2001) and Lindstrom/Pascucci
+ * for the general terrain refinement approach.
+ *
+ * @param input DEM tile, coverage, and per-tile geometry context
+ * @param options refinement budget and error-metric parameters
+ * @return generated local mesh with coverage metadata
+ */
 AugmentedMesh demTinMesh(const DemTinInput &input, const DemTinOptions &options);
 
 #endif // mapproxy_support_demtin_hpp_included_

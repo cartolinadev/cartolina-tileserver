@@ -421,14 +421,18 @@ AugmentedMesh SurfaceDem
     // generate coverage
     auto coverage(generateCoverage(dem->cols - 1, nodeInfo, maskTree_
                                    , vts::NodeInfo::CoverageType::grid));
-
-    DemSampler ds(*dem, coverage, definition_.heightFunction);
+ 
+    // generate mesh
     AugmentedMesh mesh;
+
     if (definition_.mesher == Definition::Mesher::rtin) {
+
         mesh = demTinMesh({ *dem, nodeInfo, coverage
-                            , definition_.heightFunction, defaultHeight }
+                            , definition_.heightFunction }
                           , {});
     } else {
+
+        DemSampler ds(*dem, coverage, definition_.heightFunction);
         mesh = meshFromNode(nodeInfo, size
                             , [&](int i, int j, double &h) -> bool
         {
@@ -438,6 +442,7 @@ AugmentedMesh SurfaceDem
         // simplify
         simplifyMesh(mesh.mesh, nodeInfo, tileFacesCalculator, dem_.geoidGrid);
     }
+
     mesh.textureLayerId = definition_.textureLayerId;
     mesh.geoidGrid = dem_.geoidGrid;
 
