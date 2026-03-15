@@ -73,11 +73,11 @@ struct DemTinOptions {
     /** Maximum number of output faces. */
     int maxFaces = 3000;
     /** Weight of the curvature term in the split error metric. */
-    double curvatureWeight = 1.0;
+    double curvatureWeight = 1.;
     /** Relative preference of peak-like features over ridge-like features. */
     double peakBonusAlpha = 0.75;
     /** Early-exit threshold expressed as a fraction of tile size. */
-    double earlyStopFraction = 0.01;
+    double earlyStopFraction = 0.005;
 };
 
 struct DemTinInput {

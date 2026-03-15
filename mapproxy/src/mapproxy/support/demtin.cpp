@@ -33,6 +33,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "dbglog/dbglog.hpp"
+
 #include "math/math.hpp"
 
 #include "geo/coordinates.hpp"
@@ -127,6 +129,12 @@ public:
 
     AugmentedMesh build()
     {
+        LOG(info1) << "DEM TIN early stop fraction: "
+                   << options_.earlyStopFraction
+                   << ", tile size: " << width_ << "x" << height_
+                   << ", derived early stop threshold: "
+                   << (options_.earlyStopFraction * tileScale_) << ".";
+
         preprocessSamples();
         initialize();
         refine();
@@ -147,6 +155,7 @@ private:
                 auto &sample(sampleInfo(x, y));
                 if (!sample.valid) { continue; }
 
+                // approximate derivatives by finite difference
                 const auto hxx(secondDerivativeX(x, y));
                 const auto hxy(mixedDerivative(x, y));
                 const auto hyy(secondDerivativeY(x, y));
@@ -280,6 +289,10 @@ private:
             addFace(mesh, a, b, c);
         }
 
+        LOG(info2) << "Generated DEM TIN with " << mesh.faces.size()
+                   << " faces, normalized residual score: "
+                   << maxNormalizedResidualScore() << ".";
+
         return out;
     }
 
@@ -394,6 +407,18 @@ private:
         const double error(std::abs(sample(mid).height - linear)
                            + sample(mid).curvature);
         return { edge.first, edge.second, mid, error };
+    }
+
+    double maxNormalizedResidualScore() const
+    {
+        double maxError(0.0);
+        for (const auto &triangle : triangles_) {
+            if (!triangle.active || !triangle.splittable) { continue; }
+            maxError = std::max(maxError
+                                , demtin::normalizedError(triangle.error
+                                                          , tileScale_));
+        }
+        return maxError;
     }
 
     int oppositeVertex(const TriangleState &triangle, int a, int b) const
