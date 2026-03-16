@@ -77,7 +77,7 @@ struct DemTinOptions {
     /** Relative preference of peak-like features over ridge-like features. */
     double peakBonusAlpha = 0.75;
     /** Early-exit threshold expressed as a fraction of tile size. */
-    double earlyStopFraction = 0.005;
+    double earlyStopFraction = 0.003;
 };
 
 struct DemTinInput {
