@@ -29,3 +29,15 @@ target_link_libraries(mapproxy-querymmti ${MODULE_LIBRARIES})
 target_compile_definitions(mapproxy-querymmti PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(mapproxy-querymmti)
 set_target_version(mapproxy-querymmti ${vts-mapproxy_VERSION})
+
+# ----------------------------------------------------------------------
+# raw VTS mesh to PLY converter
+set(rmesh2ply_SOURCES
+  rmesh2ply.cpp
+  )
+
+add_executable(rmesh2ply ${rmesh2ply_SOURCES})
+target_link_libraries(rmesh2ply ${MODULE_LIBRARIES})
+target_compile_definitions(rmesh2ply PRIVATE ${MODULE_DEFINITIONS})
+buildsys_binary(rmesh2ply)
+set_target_version(rmesh2ply ${vts-mapproxy_VERSION})
