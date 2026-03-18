@@ -226,8 +226,8 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
         % normalMap.rows % normalMap.cols;
 
     // convert normals to refframe's physical srs
-    const auto conv(sds2phys(nodeInfo, boost::none));
-    if (!conv) { utility::raise<InternalError>("Conversion failed."); }
+    const auto iconv(phys2sds(nodeInfo, boost::none));
+    if (!iconv) { utility::raise<InternalError>("Conversion failed."); }
 
     bool optimize = false;
 
@@ -240,7 +240,7 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     }
 
     geo::normalmap::convertNormals(
-        normalMap, nodeInfo.extents(), conv.conv(), optimize);
+        normalMap, nodeInfo.extents(), iconv.conv(), optimize);
 
     // octahedron encoding
     geo::normalmap::encodeOct(normalMap);

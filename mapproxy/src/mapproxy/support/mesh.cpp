@@ -354,10 +354,11 @@ vts::CsConvertor sdsg2sdsr(const vts::NodeInfo &nodeInfo
     return vts::CsConvertor(sds(nodeInfo, geoidGrid), nodeInfo.srs());
 }
 
-vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo)
+vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
+                         , const boost::optional<std::string> &geoidGrid)
 {
     return vts::CsConvertor(nodeInfo.referenceFrame().model.physicalSrs
-                            , nodeInfo.srs());
+                            , sds(nodeInfo, geoidGrid));
 }
 
 namespace {

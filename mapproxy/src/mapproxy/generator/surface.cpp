@@ -515,8 +515,8 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     cv::Mat normalMap = generateNormalMapImpl(nodeInfo, sink, arsenal);
 
     // convert normal map to physical srs
-    const auto conv(sds2phys(nodeInfo, definition_.getGeoidGrid()));
-    if (!conv) { utility::raise<InternalError>("Conversion failed."); }
+    const auto iconv(phys2sds(nodeInfo, definition_.getGeoidGrid()));
+    if (!iconv) { utility::raise<InternalError>("Conversion failed."); }
 
     bool optimize = false;
 
@@ -529,7 +529,7 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     }
 
     geo::normalmap::convertNormals(
-        normalMap, nodeInfo.extents(), conv.conv(), optimize);
+        normalMap, nodeInfo.extents(), iconv.conv(), optimize);
 
     // octahedron encoding
     geo::normalmap::encodeOct(normalMap);

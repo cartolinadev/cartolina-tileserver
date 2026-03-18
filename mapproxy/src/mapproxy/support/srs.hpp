@@ -51,6 +51,8 @@ vts::CsConvertor sdsg2sdsr(const vts::NodeInfo &nodeInfo
 
 /** Convertor between physical coordinates and node's SDS.
  */
-vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo);
+vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
+                         , const boost::optional<std::string> &geoidGrid
+                         = boost::none);
 
 #endif // mapproxy_support_srs_hpp_included_
