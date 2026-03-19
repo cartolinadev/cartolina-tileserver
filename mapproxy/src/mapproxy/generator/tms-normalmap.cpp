@@ -242,6 +242,10 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     geo::normalmap::convertNormals(
         normalMap, nodeInfo.extents(), iconv.conv(), optimize);
 
+    // convert normals to tangent space of the node
+    geo::normalmap::convertNormals
+        (normalMap, trans(nodeTangentSpace(nodeInfo, boost::none)));
+
     // octahedron encoding
     geo::normalmap::encodeOct(normalMap);
 
