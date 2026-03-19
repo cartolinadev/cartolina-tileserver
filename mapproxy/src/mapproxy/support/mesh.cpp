@@ -361,6 +361,54 @@ vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
                             , sds(nodeInfo, geoidGrid));
 }
 
+std::array<math::Point3, 4>
+physicalCorners(const vts::NodeInfo &nodeInfo
+                , const boost::optional<std::string> &geoidGrid)
+{
+    const auto conv(sds2phys(nodeInfo, geoidGrid));
+    const auto &extents(nodeInfo.extents());
+
+    return {{
+        conv(math::Point3(extents.ll(0), extents.ll(1), 0.0))
+        , conv(math::Point3(extents.ur(0), extents.ll(1), 0.0))
+        , conv(math::Point3(extents.ur(0), extents.ur(1), 0.0))
+        , conv(math::Point3(extents.ll(0), extents.ur(1), 0.0))
+    }};
+}
+
+math::Matrix3 nodeTangentSpace(const vts::NodeInfo &nodeInfo
+                               , const boost::optional<std::string> &geoidGrid)
+{
+    const auto corners(physicalCorners(nodeInfo, geoidGrid));
+    const auto &ll(corners[0]);
+    const auto &lr(corners[1]);
+    const auto &ur(corners[2]);
+    const auto &ul(corners[3]);
+
+    const auto t(0.5 * (lr - ll) + 0.5 * (ur - ul));
+    const auto b(0.5 * (ul - ll) + 0.5 * (ur - lr));
+    constexpr double collapseDelta(1e-12);
+
+    if ((boost::numeric::ublas::norm_2(t) <= collapseDelta)
+        || (boost::numeric::ublas::norm_2(b) <= collapseDelta))
+    {
+        LOG(warn2)
+            << "Collapsed node tangent space for node " << nodeInfo.nodeId()
+            << "; returning identity TBN.";
+        return math::identity3();
+    }
+
+    const auto n(math::normalize(math::crossProduct(t, b)));
+    const auto tt(math::normalize(math::crossProduct(b, n)));
+    const auto bb(math::normalize(b));
+
+    math::Matrix3 m(boost::numeric::ublas::zero_matrix<double>(3, 3));
+    boost::numeric::ublas::column(m, 0) = tt;
+    boost::numeric::ublas::column(m, 1) = bb;
+    boost::numeric::ublas::column(m, 2) = n;
+    return m;
+}
+
 namespace {
 
 class TextureNormalizer {

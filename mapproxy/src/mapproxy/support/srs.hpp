@@ -27,6 +27,8 @@
 #ifndef mapproxy_support_srs_hpp_included_
 #define mapproxy_support_srs_hpp_included_
 
+#include <array>
+
 #include <boost/optional.hpp>
 
 #include "vts-libs/vts/nodeinfo.hpp"
@@ -54,5 +56,32 @@ vts::CsConvertor sdsg2sdsr(const vts::NodeInfo &nodeInfo
 vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
                          , const boost::optional<std::string> &geoidGrid
                          = boost::none);
+
+/** @brief Returns node corner positions in physical coordinates.
+ *
+ *  Corners are sampled at zero Z in the node SDS.
+ *  Returned order is ll, lr, ur, ul.
+ *
+ *  @param nodeInfo node whose SDS extents define the input corner positions
+ *  @param geoidGrid optional geoid grid override applied when building the
+ *      SDS-to-physical convertor
+ */
+std::array<math::Point3, 4>
+physicalCorners(const vts::NodeInfo &nodeInfo
+                , const boost::optional<std::string> &geoidGrid
+                = boost::none);
+
+/** @brief Returns node tangent-space basis in physical coordinates.
+ *
+ *  The basis is derived from node corners sampled at zero Z in the node SDS.
+ *  Matrix columns are T', B', N.
+ *
+ *  @param nodeInfo node whose SDS extents define the input corner positions
+ *  @param geoidGrid optional geoid grid override applied when building the
+ *      SDS-to-physical convertor
+ */
+math::Matrix3 nodeTangentSpace(const vts::NodeInfo &nodeInfo
+                               , const boost::optional<std::string> &geoidGrid
+                               = boost::none);
 
 #endif // mapproxy_support_srs_hpp_included_
