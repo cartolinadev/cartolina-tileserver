@@ -385,8 +385,8 @@ math::Matrix3 nodeTangentSpace(const vts::NodeInfo &nodeInfo
     const auto &ur(corners[2]);
     const auto &ul(corners[3]);
 
-    const auto t(0.5 * (lr - ll) + 0.5 * (ur - ul));
-    const auto b(0.5 * (ul - ll) + 0.5 * (ur - lr));
+    const math::Point3 t(0.5 * (lr - ll) + 0.5 * (ur - ul));
+    const math::Point3 b(0.5 * (ul - ll) + 0.5 * (ur - lr));
     constexpr double collapseDelta(1e-12);
 
     if ((boost::numeric::ublas::norm_2(t) <= collapseDelta)

@@ -1,3 +1,9 @@
+cartolina-tileserver (1.109) UNRELEASED; urgency=medium
+
+  * fixed math in conversion of normals
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 20 Mar 2026 01:08:54 +0100
+
 cartolina-tileserver (1.108) testing; urgency=medium
 
   * fixed dependencies (for real)

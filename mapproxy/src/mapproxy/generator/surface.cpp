@@ -532,8 +532,8 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
         normalMap, nodeInfo.extents(), iconv.conv(), optimize);
 
     // convert normals to tangent space of the node
-    geo::normalmap::convertNormals(normalMap
-         , trans(nodeTangentSpace(nodeInfo, definition_.getGeoidGrid())));
+    //geo::normalmap::convertNormals(normalMap
+    //     , trans(nodeTangentSpace(nodeInfo, definition_.getGeoidGrid())));
 
     // octahedron encoding
     geo::normalmap::encodeOct(normalMap);
