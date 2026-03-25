@@ -514,9 +514,9 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     // generate normal map
     cv::Mat normalMap = generateNormalMapImpl(nodeInfo, sink, arsenal);
 
-    // convert normal map to physical srs
-    const auto iconv(phys2sds(nodeInfo, definition_.getGeoidGrid()));
-    if (!iconv) { utility::raise<InternalError>("Conversion failed."); }
+    // convert normals to refframe's physical srs
+    const auto conv(sds2phys(nodeInfo, definition_.getGeoidGrid()));
+    if (!conv) { utility::raise<InternalError>("Conversion failed."); } 
 
     bool optimize = false;
 
@@ -529,7 +529,7 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     }
 
     geo::normalmap::convertNormals(
-        normalMap, nodeInfo.extents(), iconv.conv(), optimize);
+        normalMap, nodeInfo.extents(), conv.conv(), optimize);
 
     // convert normals to tangent space of the node
     //geo::normalmap::convertNormals(normalMap
