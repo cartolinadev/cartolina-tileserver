@@ -57,6 +57,51 @@ vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
                          , const boost::optional<std::string> &geoidGrid
                          = boost::none);
 
+
+/* This class implements a space-depdendent coordinate system transformation, 
+ * intended for usage as a template argument of geo::normalmap::convertNormals. 
+ * 
+ * This is a functor returning a 3x3 linear transform matrix, which
+ * transforms a vector from physical (ECEF) for a given ellipsoid to a 
+ * plane tangent to the elllipsoid at a given point (more accurately, at a point
+ * projected to the ellipsoid in a direction perpendicular to its surface).
+ * 
+ * The convertor is parametrized by a spatial reference, which is used to 
+ * determine the ellipsoid parameters, and by an up-vector whose projection to
+ * the tangent plane defines the "up" direction in the tangent space. 
+ */
+
+class TangentialPlaneConvertor {
+
+public:
+
+    TangentialPlaneConvertor(const geo::SrsDefinition &srs, 
+        const math::Point3 &up) { 
+
+            auto e = geo::ellipsoid(srs);
+            axisRatioSq_ = e(0) * e(0) / (e(2) * e(2));
+            up_ = up;
+        }
+
+    math::Matrix3 operator()(const math::Point3& p) const {
+
+        auto b2 = math::normalize(math::Point3(p(0), p(1), p(2) * axisRatioSq_));
+        auto b0 = math::normalize(math::crossProduct(up_, b2));
+        auto b1 = math::crossProduct(b2, b0);
+
+        math::Matrix3 m(boost::numeric::ublas::zero_matrix<double>(3, 3));
+        boost::numeric::ublas::column(m, 0) = b0;
+        boost::numeric::ublas::column(m, 1) = b1;
+        boost::numeric::ublas::column(m, 2) = b2;
+
+        return trans(m);
+    }
+
+private:
+    float axisRatioSq_;
+    math::Point3 up_;
+};
+
 /** @brief Returns node corner positions in physical coordinates.
  *
  *  Corners are sampled at zero Z in the node SDS.

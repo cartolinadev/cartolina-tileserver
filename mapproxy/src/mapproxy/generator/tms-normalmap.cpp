@@ -225,10 +225,20 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
     LOG(debug) << boost::format("normal map size: %1%x%2%")
         % normalMap.rows % normalMap.cols;
 
-    // convert normals to refframe's physical srs
+    // converting normals - first obtain convertor to refframe's physical srs
     const auto conv(sds2phys(nodeInfo, boost::none));
     if (!conv) { utility::raise<InternalError>("Conversion failed."); }
 
+    // we want to convert normals to the node's tangential plane
+    auto [ll, lr, ul, ur] = physicalCorners(nodeInfo, boost::none);
+
+    const auto& vrs(vtslibs::registry::system); 
+
+    auto extraConv = TangentialPlaneConvertor(
+        vrs.srs(nodeInfo.referenceFrame().model.physicalSrs).srsDef,
+        0.5 * (ul + ur - ll - lr));
+
+    // optimization criterion
     bool optimize = false;
 
     if (tileId.lod > 3) {
@@ -239,8 +249,9 @@ void TmsNormalMap::generateTileImage(const vts::TileId &tileId
         optimize = true;
     }
 
+    // actual conversion
     geo::normalmap::convertNormals(
-        normalMap, nodeInfo.extents(), conv.conv(), optimize);
+        normalMap, nodeInfo.extents(), conv.conv(), extraConv, optimize);
 
     // convert normals to tangent space of the node
     //geo::normalmap::convertNormals

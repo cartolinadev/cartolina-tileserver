@@ -514,10 +514,20 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
     // generate normal map
     cv::Mat normalMap = generateNormalMapImpl(nodeInfo, sink, arsenal);
 
-    // convert normals to refframe's physical srs
-    const auto conv(sds2phys(nodeInfo, definition_.getGeoidGrid()));
+    // converting normals - first, obtain convertor to refframe's physical srs
+    const auto conv(sds2phys(nodeInfo, boost::none));
     if (!conv) { utility::raise<InternalError>("Conversion failed."); } 
 
+    // we want to convert normals to the node's tangential plane
+    auto [ll, lr, ul, ur] = physicalCorners(nodeInfo, boost::none);
+
+    const auto& vrs(vtslibs::registry::system);
+
+    auto extraConv = TangentialPlaneConvertor(
+        vrs.srs(nodeInfo.referenceFrame().model.physicalSrs).srsDef,
+        0.5 * (ul + ur - ll - lr));
+
+    // optimization criterion
     bool optimize = false;
 
     if (tileId.lod > 4) {
@@ -528,14 +538,11 @@ void SurfaceBase::generateNormalMap(const vts::TileId &tileId
         optimize = true;
     }
 
+    // actual conversion
     geo::normalmap::convertNormals(
-        normalMap, nodeInfo.extents(), conv.conv(), optimize);
+        normalMap, nodeInfo.extents(), conv.conv(), extraConv, optimize);
 
-    // convert normals to tangent space of the node
-    //geo::normalmap::convertNormals(normalMap
-    //     , trans(nodeTangentSpace(nodeInfo, definition_.getGeoidGrid())));
-
-    // octahedron encoding
+    // octahedron encoding (mandatory only if expected by the client)
     geo::normalmap::encodeOct(normalMap);
 
     // obtain the final image, write to stream
