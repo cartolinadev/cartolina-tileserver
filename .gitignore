@@ -8,3 +8,4 @@ DEADJOE
 .cache
 compile_commands.json
 *.kate-swp
+README.upload-package

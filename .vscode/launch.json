@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "mapproxy",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "-f",
+        "${env:HOME}/install/etc/vts/mapproxy/mapproxy.conf"
+      ],
+      "cwd": "${workspaceFolder}/mapproxy",
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "MIMode": "gdb"
+    }
+  ]
+}

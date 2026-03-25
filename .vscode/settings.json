@@ -1,0 +1,16 @@
+{
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "cmake.sourceDirectory": "${workspaceFolder}/mapproxy",
+  "cmake.useCMakePresets": "always",
+  "cmake.debugConfig": {
+    "args": [
+      "-f",
+      "${env:HOME}/install/etc/vts/mapproxy/mapproxy.conf"
+    ],
+    "cwd": "${workspaceFolder}/mapproxy",
+    "console": "integratedTerminal",
+    "stopAtEntry": false
+  }
+}

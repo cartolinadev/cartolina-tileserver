@@ -134,3 +134,21 @@ add_subdirectory(src/utility/tools EXCLUDE_FROM_ALL)
 
 set(semantic-tools-INSTALL-COMPONENT tools)
 add_subdirectory(src/semantic/tools)
+
+# Resolve symlinks in compile_commands.json so clangd matches real paths
+# (externals/lib* instead of the mapproxy/src/* symlinks).
+set(_fix_script "${CMAKE_SOURCE_DIR}/../scripts/fix-compile-commands.py")
+set(_raw_db    "${CMAKE_BINARY_DIR}/compile_commands.json")
+set(_fixed_db  "${CMAKE_SOURCE_DIR}/../compile_commands.json")
+
+# Run at configure time so the fixed DB is ready without a manual build step.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} "${_fix_script}" "${_raw_db}" "${_fixed_db}"
+)
+
+# Run at every build to pick up newly added source files.
+add_custom_target(fix-compile-commands ALL
+    COMMAND ${Python3_EXECUTABLE} "${_fix_script}" "${_raw_db}" "${_fixed_db}"
+    COMMENT "Resolving symlinks in compile_commands.json for clangd"
+    BYPRODUCTS "${_fixed_db}"
+)
