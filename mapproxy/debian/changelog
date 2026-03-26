@@ -1,3 +1,9 @@
+cartolina-tileserver (1.111) UNRELEASED; urgency=medium
+
+  * updated generator revisions (forgotten in previous package)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 26 Mar 2026 18:54:57 +0100
+
 cartolina-tileserver (1.110) testing; urgency=medium
 
   * normals in surface generators and in tms-normalmap now use tangential
