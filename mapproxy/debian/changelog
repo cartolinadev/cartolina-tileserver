@@ -1,6 +1,7 @@
-cartolina-tileserver (1.109) UNRELEASED; urgency=medium
+cartolina-tileserver (1.110) testing; urgency=medium
 
-  * fixed math in conversion of normals
+  * normals in surface generators and in tms-normalmap now use tangential
+    plane frame (renderer update needed)
 
  -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 20 Mar 2026 01:08:54 +0100
 
