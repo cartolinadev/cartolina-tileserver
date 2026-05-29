@@ -93,9 +93,13 @@ void prepareTileIndex(vts::TileIndex &index
             // make tiling available from root to resource max LOD and copy
             // tiling data from original to new bottom LOD
             // NB: tiling *should* be from root
+            //
+            // synthesised LODs are copied from the bottom LOD, not
+            // resampled; a watertight parent does not imply watertight
+            // children, so clear watertight while keeping coverage (mesh)
             datasetTiles
                 .makeAvailable(vts::LodRange(0, resource.lodRange.max))
-                .completeDownFromBottom();
+                .completeDownFromBottom(TiFlag::any, TiFlag::watertight);
         }
 
         // TODO: unset navtile info if navtiles is true
