@@ -450,12 +450,17 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
     // this trickery could be replaced with a new type of ::Operation
     auto extents = extentsPlusHalfPixel(nodeInfo.extents(), {256,256});
 
+    // sentinel the warp writes into pixels with no valid source data; it is
+    // far outside any real elevation so it cannot collide with terrain
+    const double demNodata(-1e10);
+
     auto dem(arsenal.warper.warp(
         GdalWarper::RasterRequest(
             GdalWarper::RasterRequest::Operation::dem
             , dem_.dataset
             , nodeInfo.srsDef(), extents
             , math::Size2(257, 257))
+            .setNodata(demNodata)
         , sink));
 
     //auto dem = std::make_shared<cv::Mat>(cv::Mat::zeros(257, 257, CV_64FC1));
@@ -487,19 +492,20 @@ cv::Mat SurfaceDem::generateNormalMapImpl(
         // flatMask.invert(); // diagnostics
     }
 
-    /* FIXME: we should deal with no-data values from normal inputs.
-       With current code, normal artifacts may appear on DEM edges. */
-
     // obtain normal map at spatial division coords
     math::Size2f pixelSize(
         (nodeInfo.extents().ur[0] - nodeInfo.extents().ll[0]) / 256,
         (nodeInfo.extents().ur[1] - nodeInfo.extents().ll[1]) / 256);
-        
+
     geo::normalmap::Parameters params;
-    
+
     params.algorithm = geo::normalmap::Algorithm::zevenbergenThorne;
-    params.viewspaceRf = true; params.invertRelief = false; 
+    params.viewspaceRf = true; params.invertRelief = false;
     params.zFactor = 1.0;
+
+    // tell the generator which value marks masked-out pixels, so they do
+    // not contaminate the gradient of valid pixels on the coverage edge
+    params.nodata = demNodata;
 
     auto normalMap = geo::normalmap::demNormals<double>(
         *dem, pixelSize, params, flatMask, inversionMask);
