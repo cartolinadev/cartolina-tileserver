@@ -1,8 +1,15 @@
-cartolina-tileserver (1.111) UNRELEASED; urgency=medium
+cartolina-tileserver (1.112) testing; urgency=medium
+
+  * honor nodata in normalmap generation
+  * the Point3 <-- Point4 assignment bug (benign)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 30 May 2026 00:48:38 +0200
+
+cartolina-tileserver (1.111) testing; urgency=medium
 
   * updated generator revisions (forgotten in previous package)
 
- -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 26 Mar 2026 18:54:57 +0100
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 30 May 2026 00:48:38 +0200
 
 cartolina-tileserver (1.110) testing; urgency=medium
 

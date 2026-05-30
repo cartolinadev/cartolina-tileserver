@@ -81,7 +81,7 @@ namespace generator {
 
 namespace {
 
-unsigned int GeneratorRevision(2);
+unsigned int GeneratorRevision(3);
 
 struct Factory : Generator::Factory {
     virtual Generator::pointer create(const Generator::Params &params)

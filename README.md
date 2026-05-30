@@ -243,6 +243,14 @@ git clone --recursive https://github.com/cartolinadev/cartolina-tileserver/carto
 parameter, you should probably delete the `vts-mapproxy` directory and clone
 again. The build will not work otherwise.
 
+### Dev environment setup
+
+After cloning, activate the repository's git hooks:
+
+```
+git config core.hooksPath .githooks
+```
+
 ### Configure and build
 
 For building the tileserver, you just have to use ``make``
