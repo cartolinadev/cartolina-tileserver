@@ -18,6 +18,22 @@ that repository (`index.md` is the entry point). The wiki is shared across the
 whole project; some of it pertains specifically to the tileserver. Examine it
 for relevant information before diving into the codebase.
 
+**Always read the wiki before answering conceptual questions and before any 
+non-trivial change. The wiki is where ongoing work is tracked across both repos; 
+the tileserver git log alone does not tell you what is planned or in flight. 
+At minimum, consult:
+
+- `docs/wiki/backlog.md` — deferred bugs and follow-up work, including
+  tileserver items (e.g. the pre-built metatile index and `mapproxy-tiling`
+  redesign).
+- `docs/wiki/session-log.md` — chronological record of significant work and
+  non-obvious findings; this is where to confirm whether a paired client-side
+  change (e.g. a "renderer update needed") has actually been done.
+- Any topic doc named for the area in play. 
+
+Do not infer current obligations from a stale changelog line; cross-check it
+against the session log and the code before reporting it as outstanding.
+
 That said, documentation is only a secondary source of truth. The codebase is
 the bible and empirical verification the holy grail: never optimise a weak or
 unverified hypothesis — test and verify, including information the user
