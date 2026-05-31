@@ -170,6 +170,10 @@ inline MetaFlag::value_type ti2metaFlags(TiFlag::value_type ti)
         meta |= MetaFlag::navtilePresent;
     }
 
+    if (ti & TiFlag::watertight) {
+        meta |= MetaFlag::watertight;
+    }
+
     return meta;
 }
 

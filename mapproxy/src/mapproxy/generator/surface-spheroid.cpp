@@ -71,7 +71,7 @@ namespace generator {
 
 namespace {
 
-unsigned int GeneratorRevision(1);
+unsigned int GeneratorRevision(2);
 
 struct Factory : Generator::Factory {
     virtual Generator::pointer create(const Generator::Params &params)
@@ -239,6 +239,10 @@ inline MetaFlag::value_type ti2metaFlags(TiFlag::value_type ti)
     }
     if (ti & TiFlag::navtile) {
         meta |= MetaFlag::navtilePresent;
+    }
+
+    if (ti & TiFlag::watertight) {
+        meta |= MetaFlag::watertight;
     }
 
     return meta;
