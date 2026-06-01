@@ -1,3 +1,9 @@
+cartolina-tileserver (1.113metatilesv6) testing; urgency=medium
+
+  * surface generators now serve v6 metatiles (with watertight bitplanes)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Mon, 01 Jun 2026 14:46:49 +0200
+
 cartolina-tileserver (1.112) testing; urgency=medium
 
   * honor nodata in normalmap generation
