@@ -24,7 +24,7 @@
 	url = https://github.com/cartolinadev/libgeo.git
 [submodule "externals/libgeometry"]
 	path = externals/libgeometry
-	url = https://github.com/melowntech/libgeometry.git
+	url = https://github.com/cartolinadev/libgeometry.git
 [submodule "externals/libhttp"]
 	path = externals/libhttp
 	url = https://github.com/melowntech/libhttp.git
