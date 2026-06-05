@@ -1,3 +1,9 @@
+cartolina-tileserver (1.114) testing; urgency=medium
+
+  * style-based Cartolina surface introspection browser
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 05 Jun 2026 21:03:01 +0200
+
 cartolina-tileserver (1.113metatilesv6) testing; urgency=medium
 
   * surface generators now serve v6 metatiles (with watertight bitplanes)
