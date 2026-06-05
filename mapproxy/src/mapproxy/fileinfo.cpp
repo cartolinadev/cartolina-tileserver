@@ -367,6 +367,16 @@ SurfaceFileInfo::SurfaceFileInfo(const FileInfo &fi)
         auto path(fi.filename);
         if (constants::Self == path) { path = constants::Index; }
 
+        if (path == constants::Index) {
+            type = Type::browser;
+            return;
+        }
+
+        if (path == constants::Style) {
+            type = Type::style;
+            return;
+        }
+
         // support files
         auto fsupport(vts::supportFiles.find(path));
         if (fsupport != vts::supportFiles.end()) {
@@ -442,6 +452,14 @@ Sink::FileInfo SurfaceFileInfo::sinkFileInfo(std::time_t lastModified) const
         return {};
 
     case Type::definition:
+        return Sink::FileInfo(constants::applicationJson, lastModified)
+            .setFileClass(FileClass::config);
+
+    case Type::browser:
+        return Sink::FileInfo(constants::textHtml, lastModified)
+            .setFileClass(FileClass::support);
+
+    case Type::style:
         return Sink::FileInfo(constants::applicationJson, lastModified)
             .setFileClass(FileClass::config);
 

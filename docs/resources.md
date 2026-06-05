@@ -220,7 +220,10 @@ In addition, a `freelayer.json` file is provided allowing generated surface to a
 ### Introspection interface
 
 If browsing is enabled mapproxy handles URLs:
- * `index.html`: built-in browser
+ * `index.html`: built-in Cartolina style-based browser
+ * `style.json`: generated Cartolina style used by `index.html`
+ * `mapConfig.json`: generated surface data manifest used by the
+   style-based browser to load the reference frame and tile URL templates
 
 ### Cesium terrain provider
 
@@ -268,10 +271,15 @@ Introspection is extended configuration for mapproxy served `mapConfig.json` (on
 introspection = {
     Optional Array position;                       // VTS position in JSON/python format
     Optional Layer/Array<Layer> tms                // bound layer(s) mapped on the surface, see below 
-    Optional Layer/Array<Layer> geodata            // free layer(s) (geodata) mapped on the surface, see below
-    Optional Object browserOptions                 // browser options passed to mapConfig.json
+    Optional Layer/Array<Layer> geodata            // deprecated; ignored by the style-based browser and logged with W4
+    Optional Object browserOptions                 // default runtime options for index.html
 }
 ```
+
+`tms` entries are translated to `diffuse-map` layers in the generated
+Cartolina style. `geodata` is retained only for legacy mapConfig
+compatibility in this release; new style-based surface introspection
+does not render it and emits a W4 warning when it is configured.
 
 The `Layer` type in the `introspection` above (`tms`/`geodata`) is a (bound/free) layer reference.
 It can be either a `ResourceId`:

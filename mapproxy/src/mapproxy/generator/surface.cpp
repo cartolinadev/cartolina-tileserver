@@ -42,6 +42,7 @@
 #include "imgproc/png.hpp"
 
 #include "vts-libs/registry/io.hpp"
+#include "vts-libs/registry/json.hpp"
 #include "vts-libs/storage/fstreams.hpp"
 #include "vts-libs/vts/io.hpp"
 #include "vts-libs/vts/nodeinfo.hpp"
@@ -57,6 +58,8 @@
 #include "vts-libs/vts/debug.hpp"
 #include "vts-libs/vts/mapconfig.hpp"
 #include "vts-libs/vts/service.hpp"
+
+#include "jsoncpp/io.hpp"
 
 #include "../error.hpp"
 #include "../support/metatile.hpp"
@@ -186,6 +189,60 @@ SurfaceBase::SurfaceBase(const Params &params)
     setProvider(std::make_unique<SurfaceProvider>(*this));
 }
 
+namespace {
+
+const char BrowserUrlKey[] = "VTS_BUILTIN_BROWSER_URL";
+const char DefaultBrowserUrl[]
+    = "https://cdn.tspl.re/libs/cartolina/dist/current";
+
+std::string jsonString(const Json::Value &value)
+{
+    std::ostringstream os;
+    os.precision(15);
+    Json::write(os, value);
+    return os.str();
+}
+
+std::string browserUrlBase(const Generator::Config &config)
+{
+    std::string base(DefaultBrowserUrl);
+    if (config.variables) {
+        const auto found(config.variables->find(BrowserUrlKey));
+        if (found != config.variables->end()) {
+            base = found->second;
+        }
+    }
+
+    while (!base.empty() && (base.back() == '/')) {
+        base.pop_back();
+    }
+    return base.empty() ? DefaultBrowserUrl : base;
+}
+
+Json::Value defaultBrowserOptions(const resource::Surface &definition)
+{
+    if (definition.introspection.browserOptions.empty()) {
+        return Json::Value(Json::objectValue);
+    }
+
+    return boost::any_cast<const Json::Value&>
+        (definition.introspection.browserOptions);
+}
+
+bool hasAtmosphere(const vr::ReferenceFrame &referenceFrame)
+{
+    if (!referenceFrame.body) { return false; }
+
+    const auto bodies(vr::listBodies(referenceFrame));
+    const auto *body(bodies(*referenceFrame.body, std::nothrow));
+    if (!body) { return false; }
+
+    const auto *json(boost::any_cast<Json::Value>(&body->json));
+    return json && json->isObject() && json->isMember("atmosphere");
+}
+
+} // namespace
+
 bool SurfaceBase::loadFiles(const Definition &definition)
 {
     if (changeEnforced()) {
@@ -259,6 +316,153 @@ bool SurfaceBase::updateProperties(const Definition &def)
     }
 
     return changed;
+}
+
+void SurfaceBase::generateIntrospectionBrowser
+    (Sink &sink, const SurfaceFileInfo &fi) const
+{
+    const auto mc(mapConfig(ResourceRoot::none));
+    const auto base(browserUrlBase(config()));
+    const auto options(defaultBrowserOptions(definition_));
+    const auto position(vr::asJson(mc.position));
+
+    std::ostringstream os;
+    os << R"RAW(<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Cartolina tileserver: introspection</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href=")RAW" << base << R"RAW(/cartolina.min.css">
+<script src=")RAW" << base << R"RAW(/cartolina.min.js"></script>
+<style>
+html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+const defaultPosition = )RAW" << jsonString(position) << R"RAW(;
+const defaultOptions = )RAW" << jsonString(options) << R"RAW(;
+
+function positionFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('pos');
+  if (!raw) return null;
+
+  const position = raw.split(',');
+  for (let index = 1; index < position.length; index++) {
+    if (index !== 3) position[index] = parseFloat(position[index]);
+  }
+  return position;
+}
+
+const options = cartolina.runtimeOptionsFromUrl({
+  positionInUrl: true,
+  ...defaultOptions
+});
+
+cartolina.map({
+  container: 'map',
+  style: './style.json',
+  position: positionFromUrl() || defaultPosition,
+  options
+});
+</script>
+</body>
+</html>
+)RAW";
+
+    sink.content(os.str(), fi.sinkFileInfo());
+}
+
+void SurfaceBase::generateIntrospectionStyle
+    (Sink &sink, const SurfaceFileInfo &fi) const
+{
+    Json::Value style(Json::objectValue);
+    style["version"] = 2;
+    style["reference-frame"] = referenceFrameId();
+
+    auto &sources(style["sources"] = Json::objectValue);
+    const auto terrainId(resource().id.fullId());
+    auto &surface(sources[terrainId] = Json::objectValue);
+    surface["type"] = "cartolina-surface";
+    surface["url"] = "./";
+
+    auto &terrain(style["terrain"] = Json::objectValue);
+    terrain["sources"] = Json::arrayValue;
+    terrain["sources"].append(terrainId);
+
+    auto &illumination(style["illumination"] = Json::objectValue);
+    auto &light(illumination["light"] = Json::arrayValue);
+    light.append("tracking");
+    light.append(315);
+    light.append(45);
+
+    auto &ve(style["vertical-exaggeration"] = Json::objectValue);
+    auto &heightRamp(ve["heightRamp"] = Json::arrayValue);
+    Json::Value heights(Json::arrayValue);
+    heights.append(0);
+    heights.append(4000);
+    Json::Value scales(Json::arrayValue);
+    scales.append(1.5);
+    scales.append(1.3);
+    heightRamp.append(heights);
+    heightRamp.append(scales);
+
+    auto &progression(ve["viewExtentProgression"] = Json::arrayValue);
+    progression.append(12.3);
+    progression.append(13000000.0);
+    progression.append(1.38);
+    progression.append(1);
+    progression.append(13.5);
+
+    if (hasAtmosphere(referenceFrame())) {
+        auto &atmosphere(style["atmosphere"] = Json::objectValue);
+        atmosphere["visibilityToEyeDistance"] = 3.0;
+        atmosphere["edgeDistanceToEyeDistance"] = 1.0;
+        atmosphere["maxVisibility"] = 1000000.0;
+    }
+
+    style["shadows"] = Json::objectValue;
+
+    auto &layers(style["layers"] = Json::arrayValue);
+    const auto &findResource([this](Resource::Generator::Type type
+                                    , const Resource::Id &id)
+                             -> const Resource*
+    {
+        if (auto other = otherGenerator
+            (type, addReferenceFrame(id, referenceFrameId())))
+        {
+            return &other->resource();
+        }
+        return nullptr;
+    });
+
+    for (const auto &layer : definition_.introspection.tms) {
+        if (const auto remote = introspection::remote
+            (Resource::Generator::Type::tms, layer, resource()
+             , findResource))
+        {
+            auto &source(sources[remote->id] = Json::objectValue);
+            source["type"] = "cartolina-tms";
+            source["url"] = remote->url;
+
+            Json::Value diffuse(Json::objectValue);
+            diffuse["type"] = "diffuse-map";
+            diffuse["source"] = remote->id;
+            layers.append(diffuse);
+        }
+    }
+
+    if (layers.empty()) {
+        style.removeMember("layers");
+    }
+
+    std::ostringstream os;
+    os.precision(15);
+    Json::write(os, style);
+    sink.content(os.str(), fi.sinkFileInfo());
 }
 
 Generator::Task SurfaceBase
@@ -426,6 +630,14 @@ Generator::Task SurfaceBase
         sink.content(vts::service::generate
                      (fi.serviceFile, fi.fileInfo.filename, fi.fileInfo.query)
                      , FileClass::data);
+        break;
+
+    case SurfaceFileInfo::Type::browser:
+        generateIntrospectionBrowser(sink, fi);
+        break;
+
+    case SurfaceFileInfo::Type::style:
+        generateIntrospectionStyle(sink, fi);
         break;
 
     default:

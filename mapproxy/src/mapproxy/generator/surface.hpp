@@ -119,6 +119,12 @@ private:
                            , vts::SubMesh::TextureMode textureMode
                            = vts::SubMesh::external) const;
 
+    void generateIntrospectionBrowser
+        (Sink &sink, const SurfaceFileInfo &fileInfo) const;
+
+    void generateIntrospectionStyle
+        (Sink &sink, const SurfaceFileInfo &fileInfo) const;
+
     /** Generic mesh generation, used by both surface and terrain interface.
      */
     virtual AugmentedMesh

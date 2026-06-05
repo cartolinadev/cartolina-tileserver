@@ -27,6 +27,8 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/utility/in_place_factory.hpp>
 
+#include "dbglog/dbglog.hpp"
+
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/as.hpp"
 
@@ -88,6 +90,11 @@ void Surface::parse(const Json::Value &value)
             = introspection::layersFrom(jintrospection, "tms");
         introspection.geodata
             = introspection::layersFrom(jintrospection, "geodata");
+        if (!introspection.geodata.empty()) {
+            LOG(warn4)
+                << "surface introspection.geodata is deprecated and ignored "
+                "by the style-based introspection browser.";
+        }
 
         if (jintrospection.isMember("position")) {
             introspection.position
