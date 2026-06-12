@@ -27,10 +27,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <condition_variable>
+#include <deque>
 #include <fstream>
 #include <future>
 #include <map>
+#include <mutex>
 #include <sstream>
+#include <vector>
 
 #include <opencv2/core/core.hpp>
 
@@ -67,6 +71,38 @@ namespace tiling {
 namespace {
 
 typedef vts::TileIndex::Flag TiFlag;
+
+/** Counting semaphore gating concurrent filter-pass warps (C++17 has
+ *  no std::counting_semaphore).
+ */
+class WarpSlots {
+public:
+    WarpSlots(int slots) : slots_(slots) {}
+
+    class Guard {
+    public:
+        Guard(WarpSlots &slots) : slots_(slots) {
+            std::unique_lock<std::mutex> lock(slots_.mutex_);
+            slots_.free_.wait(lock, [&]() { return slots_.slots_ > 0; });
+            --slots_.slots_;
+        }
+        ~Guard() {
+            {
+                std::lock_guard<std::mutex> lock(slots_.mutex_);
+                ++slots_.slots_;
+            }
+            slots_.free_.notify_one();
+        }
+    private:
+        WarpSlots &slots_;
+    };
+
+private:
+    friend class Guard;
+    std::mutex mutex_;
+    std::condition_variable free_;
+    int slots_;
+};
 
 /** Sentinel marking elevation cells with no valid source data; far
  *  outside any real elevation.
@@ -450,6 +486,14 @@ public:
         storeHeader_.metaBinaryOrder = config.metaBinaryOrder;
         storeHeader_.metaDepth = config.metaDepth;
 
+        /* All (division node, pass) warps go into one pool so the
+         * lighter mask passes of one node fill the streams the long
+         * elevation passes of another leave idle; reduction and
+         * emission stay sequential in node order (they touch the
+         * shared tile index and store pages).
+         */
+        WarpSlots slots(config.warpConcurrency);
+        std::deque<NodeJob> jobs;
         for (const auto &item : referenceFrame.division.nodes) {
             const auto &node(item.second);
             if (node.partitioning.mode
@@ -457,8 +501,10 @@ public:
             {
                 continue;
             }
-            processNode(node);
+            prepareNode(node, slots, jobs);
         }
+
+        for (auto &job : jobs) { reduceNode(job); }
     }
 
     UnifiedResult result() {
@@ -472,7 +518,22 @@ public:
     }
 
 private:
-    void processNode(const vr::ReferenceFrame::Division::Node &node);
+    /** One division node's pooled warps plus the geometry the
+     *  reduction needs.
+     */
+    struct NodeJob {
+        vr::ReferenceFrame::Division::Node node;
+        geo::SrsDefinition srsDef;
+        vts::TileRange leafRange;
+        math::Extents2 extents;
+        math::Size2i gridSize;
+        std::future<cv::Mat> maskMin, maskMax, elevMin, elevMax;
+    };
+
+    void prepareNode(const vr::ReferenceFrame::Division::Node &node
+                     , WarpSlots &slots, std::deque<NodeJob> &jobs);
+
+    void reduceNode(NodeJob &job);
 
     void emit(const vr::ReferenceFrame::Division::Node &node
               , const geo::SrsDefinition &srsDef
@@ -492,8 +553,9 @@ private:
     std::map<vts::TileId, mnstore::Page> pages_;
 };
 
-void UnifiedPass::processNode
-    (const vr::ReferenceFrame::Division::Node &node)
+void UnifiedPass::prepareNode
+    (const vr::ReferenceFrame::Division::Node &node
+     , WarpSlots &slots, std::deque<NodeJob> &jobs)
 {
     const auto leafLod(lodRange_.max);
     if (node.id.lod > leafLod) { return; }
@@ -509,60 +571,89 @@ void UnifiedPass::processNode
     const auto leafRange(world_.intersect(leafLod, subtree));
     if (!leafRange) { return; }
 
-    LOG(info3)
-        << "Unified pass: processing division node " << node.id
-        << " (srs: " << node.srs << "), leaf range "
-        << leafLod << "/" << *leafRange << ".";
-
-    const auto srsDef(vr::system.srs(node.srs).srsDef);
-    const auto extents(rangeExtents(node, leafLod, *leafRange));
-    const math::Size2i gridSize
+    jobs.emplace_back();
+    auto &job(jobs.back());
+    job.node = node;
+    job.srsDef = vr::system.srs(node.srs).srsDef;
+    job.leafRange = *leafRange;
+    job.extents = rangeExtents(node, leafLod, *leafRange);
+    job.gridSize = math::Size2i
         (leafRange->ur(0) - leafRange->ll(0) + 1
          , leafRange->ur(1) - leafRange->ll(1) + 1);
 
-    // the four one-pixel-per-tile filter passes (RFC 7 section 4.2);
-    // nodata rule per section 4.3: mask passes carry no source nodata
-    // (the VRT mask band has none) with destinations initialized to 0,
-    // elevation passes inherit source nodata so invalid pixels cannot
-    // poison the range
     LOG(info3)
-        << "Unified pass: running the four filter passes ("
-        << gridSize << " px each).";
-    auto maskMinFuture
-        (std::async(std::launch::async, [&]() {
-            return filterPass(maskVrt_.path(), srsDef, gridSize
-                              , extents, GDT_Byte, boost::none, "min"
-                              , "mask min");
-        }));
-    auto maskMaxFuture
-        (std::async(std::launch::async, [&]() {
-            return filterPass(maskVrt_.path(), srsDef, gridSize
-                              , extents, GDT_Byte, boost::none, "max"
-                              , "mask max");
-        }));
-    auto elevMinFuture
-        (std::async(std::launch::async, [&]() {
-            return filterPass(dataset_, srsDef, gridSize, extents
-                              , GDT_Float32, ElevationNodata, "min"
-                              , "elevation min");
-        }));
-    const auto elevMax
-        (filterPass(dataset_, srsDef, gridSize, extents, GDT_Float32
-                    , ElevationNodata, "max", "elevation max"));
-    const auto maskMin(maskMinFuture.get());
-    const auto maskMax(maskMaxFuture.get());
-    const auto elevMin(elevMinFuture.get());
+        << "Unified pass: scheduling division node " << node.id
+        << " (srs: " << node.srs << "), leaf range "
+        << leafLod << "/" << *leafRange << ".";
+
+    /* The four one-pixel-per-tile filter passes (RFC 7 section 4.2);
+     * nodata rule per section 4.3: mask passes carry no source nodata
+     * (the VRT mask band has none) with destinations initialized to
+     * 0, elevation passes inherit source nodata so invalid pixels
+     * cannot poison the range. Elevation passes are scheduled first:
+     * they dominate (full-depth decompression), so the lighter mask
+     * passes backfill free slots.
+     */
+    // capture geometry by value: the jobs container may reallocate
+    // while warps are in flight
+    const auto srsDef(job.srsDef);
+    const auto gridSize(job.gridSize);
+    const auto extents(job.extents);
+    const auto pass([srsDef, gridSize, extents, &slots]
+                    (const fs::path &source, GDALDataType dataType
+                     , const boost::optional<double> &nodata
+                     , const char *resampling, std::string what)
+    {
+        return std::async(std::launch::async
+                          , [=, &slots]() {
+            WarpSlots::Guard guard(slots);
+            return filterPass(source, srsDef, gridSize, extents
+                              , dataType, nodata, resampling, what);
+        });
+    });
+
+    const auto name([&](const char *what)
+    {
+        std::ostringstream os;
+        os << node.id << " " << what;
+        return os.str();
+    });
+
+    job.elevMin = pass(dataset_, GDT_Float32, ElevationNodata, "min"
+                       , name("elevation min"));
+    job.elevMax = pass(dataset_, GDT_Float32, ElevationNodata, "max"
+                       , name("elevation max"));
+    job.maskMin = pass(maskVrt_.path(), GDT_Byte, boost::none, "min"
+                       , name("mask min"));
+    job.maskMax = pass(maskVrt_.path(), GDT_Byte, boost::none, "max"
+                       , name("mask max"));
+}
+
+void UnifiedPass::reduceNode(NodeJob &job)
+{
+    const auto &node(job.node);
+    const auto &srsDef(job.srsDef);
+    const auto leafLod(lodRange_.max);
+    const auto &leafRange(job.leafRange);
+
+    const auto maskMin(job.maskMin.get());
+    const auto maskMax(job.maskMax.get());
+    const auto elevMin(job.elevMin.get());
+    const auto elevMax(job.elevMax.get());
+
+    LOG(info3)
+        << "Unified pass: reducing division node " << node.id << ".";
 
     const ValueTransform transform(config_);
 
     // assemble leaf grid
-    LodGrid leaf(*leafRange);
+    LodGrid leaf(leafRange);
     {
         std::size_t cells(0), holes(0);
         for (int j(0); j < leaf.height(); ++j) {
-            const auto y(leafRange->ll(1) + j);
+            const auto y(leafRange.ll(1) + j);
             for (int i(0); i < leaf.width(); ++i) {
-                const auto x(leafRange->ll(0) + i);
+                const auto x(leafRange.ll(0) + i);
                 if (!world_(leafLod, x, y)) { continue; }
 
                 if (!maskMax.at<std::uint8_t>(j, i)) { continue; }

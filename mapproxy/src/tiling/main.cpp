@@ -238,6 +238,11 @@ void Tiling::configuration(po::options_description &cmdline
          ->default_value(unifiedConfig_.metaDepth)
          , "Metatile packaging: number of LOD levels per metatile "
          "delivery unit.")
+        ("warpConcurrency", po::value(&unifiedConfig_.warpConcurrency)
+         ->default_value(unifiedConfig_.warpConcurrency)
+         , "Maximum concurrent filter-pass warps across division "
+         "nodes (source-read bound; raise only if storage sustains "
+         "more streams).")
         ("geoidGrid", po::value<std::string>()
          , "Geoid grid of the SDS vertical datum (resource geoidGrid "
          "setting); stored heights are converted to the raw SDS "

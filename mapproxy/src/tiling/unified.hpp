@@ -27,6 +27,9 @@
 #ifndef mapproxy_tiling_unified_hpp_included_
 #define mapproxy_tiling_unified_hpp_included_
 
+#include <algorithm>
+#include <thread>
+
 #include <boost/filesystem.hpp>
 #include <boost/optional.hpp>
 
@@ -74,6 +77,19 @@ struct UnifiedConfig {
     /** Treats all partial tiles as watertight (legacy option).
      */
     bool forceWatertight = false;
+
+    /** Maximum concurrent filter-pass warps across all division
+     *  nodes. The work is source-read/decompress bound, so the only
+     *  hard ceiling is the storage's sustainable stream count; each
+     *  in-flight pass holds one destination grid, and a node
+     *  completed but not yet reduced holds four.
+     */
+    static int defaultWarpConcurrency() {
+        const auto cores(std::thread::hardware_concurrency());
+        return std::min(12, cores ? int(cores) : 4);
+    }
+
+    int warpConcurrency = defaultWarpConcurrency();
 };
 
 struct UnifiedResult {
