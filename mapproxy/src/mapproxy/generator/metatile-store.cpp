@@ -38,9 +38,13 @@
  * texelSize.
  */
 
+#include <cstdlib>
+#include <mutex>
+
 #include "utility/raise.hpp"
 
 #include "geo/srsdef.hpp"
+#include "geo/geodataset.hpp"
 
 #include "vts-libs/vts/csconvertor.hpp"
 
@@ -118,81 +122,200 @@ cachedGeoidConvertor(const std::string &sds, const std::string &geoidGrid
     return icache->second;
 }
 
-/** Geoid undulation sampled at the block corners; bilinear lookup of
- *  the orthometric-to-raw-SDS shift. The undulation varies smoothly
- *  at metatile scales, so corner interpolation stays well within the
- *  stored range's half-float bias.
+/** Geoid grid sample spacing, in meters. Read once from the grid
+ *  file header: the grid's own pitch is the scale below which
+ *  bilinear interpolation of the undulation is as faithful as PROJ's
+ *  own grid read. Falls back to 0.25 degree (EGM96-class) with a
+ *  warning when the grid file cannot be located.
+ */
+double geoidGridSpacing(const std::string &geoidGrid)
+{
+    static std::mutex mutex;
+    static std::map<std::string, double> cache;
+    std::lock_guard<std::mutex> lock(mutex);
+
+    auto icache(cache.find(geoidGrid));
+    if (icache != cache.end()) { return icache->second; }
+
+    double spacing(0.25); // degrees
+
+    std::vector<boost::filesystem::path> dirs;
+    if (const char *projLib = std::getenv("PROJ_LIB")) {
+        dirs.push_back(projLib);
+    }
+    dirs.push_back("/usr/share/proj");
+    dirs.push_back("/usr/local/share/proj");
+
+    bool found(false);
+    for (const auto &dir : dirs) {
+        const auto path(dir / geoidGrid);
+        if (!boost::filesystem::exists(path)) { continue; }
+        try {
+            const auto grid(geo::GeoDataset::open(path));
+            const auto gt(grid.geoTransform());
+            spacing = std::min(std::abs(gt[1]), std::abs(gt[5]));
+            found = true;
+            LOG(info2)
+                << "Geoid grid " << path << ": sample spacing "
+                << spacing << " deg.";
+        } catch (const std::exception &e) {
+            LOG(warn2)
+                << "Cannot read geoid grid " << path << ": "
+                << e.what() << ".";
+        }
+        break;
+    }
+
+    if (!found) {
+        LOG(warn2)
+            << "Geoid grid \"" << geoidGrid << "\" not found in PROJ "
+            "search paths; assuming 0.25 degree sample spacing for "
+            "undulation interpolation.";
+    }
+
+    cache[geoidGrid] = spacing;
+    return spacing;
+}
+
+/** Geoid undulation sampled on a lattice over the block. The lattice
+ *  density follows the block's footprint in the geoid grid itself:
+ *  the block corners are projected into the grid's CRS and the
+ *  bounding-box span is divided by the grid pitch, so lattice nodes
+ *  land at (or below) grid-sample spacing and interpolating between
+ *  them is as faithful as evaluating the (itself grid-interpolated)
+ *  undulation per node. The density is capped; the cap is reached
+ *  only on the few coarsest metatiles, where the residual
+ *  sub-lattice error is meters against kilometer-scale ranges.
  */
 class UndulationGrid {
 public:
     /** Identity grid (no geoid configured). */
-    UndulationGrid() : extents_(), undulation_{ 0.0, 0.0, 0.0, 0.0 } {}
+    UndulationGrid()
+        : extents_(), cols_(1), rows_(1), values_(4, 0.0) {}
 
     UndulationGrid(const vts::CsConvertor &shift
-                   , const math::Extents2 &extents)
+                   , const vts::CsConvertor &toGridCrs
+                   , const math::Extents2 &extents
+                   , double spacing)
         : extents_(extents)
-        , undulation_{
-            shift(math::Point3(extents.ll(0), extents.ll(1), 0.0))(2)
-            , shift(math::Point3(extents.ur(0), extents.ll(1), 0.0))(2)
-            , shift(math::Point3(extents.ll(0), extents.ur(1), 0.0))(2)
-            , shift(math::Point3(extents.ur(0), extents.ur(1), 0.0))(2) }
-    {}
+    {
+        // block footprint in the geoid grid CRS (corner bounding box)
+        math::Extents2 footprint(math::InvalidExtents{});
+        for (const auto &corner : {
+                math::Point2(extents.ll(0), extents.ll(1))
+                , math::Point2(extents.ur(0), extents.ll(1))
+                , math::Point2(extents.ll(0), extents.ur(1))
+                , math::Point2(extents.ur(0), extents.ur(1)) })
+        {
+            const auto projected
+                (toGridCrs(math::Point3(corner(0), corner(1), 0.0)));
+            math::update(footprint
+                         , math::Point2(projected(0), projected(1)));
+        }
+        const auto span(math::size(footprint));
 
-    double operator()(const math::Point2 &point) const {
-        const auto size(math::size(extents_));
-        if (!size.width || !size.height) { return undulation_[0]; }
-        const double fx((point(0) - extents_.ll(0)) / size.width);
-        const double fy((point(1) - extents_.ll(1)) / size.height);
-        const double bottom(undulation_[0]
-                            + fx * (undulation_[1] - undulation_[0]));
-        const double top(undulation_[2]
-                         + fx * (undulation_[3] - undulation_[2]));
-        return bottom + fy * (top - bottom);
+        const auto cells([&](double span) -> int
+        {
+            if (!(span > 0.0) || !(spacing > 0.0)) { return 1; }
+            return std::max(1, std::min(64, int(std::ceil
+                                                (span / spacing))));
+        });
+        cols_ = cells(span.width);
+        rows_ = cells(span.height);
+
+        const auto size(math::size(extents));
+        values_.reserve((cols_ + 1) * (rows_ + 1));
+        for (int row(0); row <= rows_; ++row) {
+            const double y(extents.ll(1)
+                           + size.height * row / rows_);
+            for (int col(0); col <= cols_; ++col) {
+                const double x(extents.ll(0)
+                               + size.width * col / cols_);
+                values_.push_back
+                    (shift(math::Point3(x, y, 0.0))(2));
+            }
+        }
     }
 
-    /** Undulation range over a cell: bilinear extrema lie on the
-     *  corners, so the corner min/max is exact for the interpolant.
+    /** Undulation range over a cell: bilinear values at the cell
+     *  corners plus all lattice nodes inside the cell (interior
+     *  extremes of cells coarser than the lattice).
      */
     std::pair<double, double>
     range(const math::Extents2 &cell) const {
-        const auto a(operator()(math::Point2(cell.ll(0), cell.ll(1))));
-        const auto b(operator()(math::Point2(cell.ur(0), cell.ll(1))));
-        const auto c(operator()(math::Point2(cell.ll(0), cell.ur(1))));
-        const auto d(operator()(math::Point2(cell.ur(0), cell.ur(1))));
-        return { std::min(std::min(a, b), std::min(c, d))
-                 , std::max(std::max(a, b), std::max(c, d)) };
+        auto low(bilinear(cell.ll(0), cell.ll(1)));
+        auto high(low);
+        const auto update([&](double value)
+        {
+            low = std::min(low, value);
+            high = std::max(high, value);
+        });
+        update(bilinear(cell.ur(0), cell.ll(1)));
+        update(bilinear(cell.ll(0), cell.ur(1)));
+        update(bilinear(cell.ur(0), cell.ur(1)));
+
+        // lattice nodes inside the cell
+        const auto size(math::size(extents_));
+        if ((size.width > 0.0) && (size.height > 0.0)) {
+            const double stepX(size.width / cols_);
+            const double stepY(size.height / rows_);
+            const int col0(std::max
+                           (0, int(std::ceil((cell.ll(0)
+                                              - extents_.ll(0))
+                                             / stepX))));
+            const int col1(std::min
+                           (cols_, int(std::floor((cell.ur(0)
+                                                   - extents_.ll(0))
+                                                  / stepX))));
+            const int row0(std::max
+                           (0, int(std::ceil((cell.ll(1)
+                                              - extents_.ll(1))
+                                             / stepY))));
+            const int row1(std::min
+                           (rows_, int(std::floor((cell.ur(1)
+                                                   - extents_.ll(1))
+                                                  / stepY))));
+            for (int row(row0); row <= row1; ++row) {
+                for (int col(col0); col <= col1; ++col) {
+                    update(values_[row * (cols_ + 1) + col]);
+                }
+            }
+        }
+
+        return { low, high };
     }
 
 private:
+    double bilinear(double x, double y) const {
+        const auto size(math::size(extents_));
+        if (!(size.width > 0.0) || !(size.height > 0.0)) {
+            return values_[0];
+        }
+        double fx((x - extents_.ll(0)) / size.width * cols_);
+        double fy((y - extents_.ll(1)) / size.height * rows_);
+        fx = std::min(std::max(fx, 0.0), double(cols_));
+        fy = std::min(std::max(fy, 0.0), double(rows_));
+        const int col(std::min(int(fx), cols_ - 1));
+        const int row(std::min(int(fy), rows_ - 1));
+        const double dx(fx - col);
+        const double dy(fy - row);
+
+        const auto at([&](int c, int r)
+        {
+            return values_[r * (cols_ + 1) + c];
+        });
+        const double bottom(at(col, row) * (1.0 - dx)
+                            + at(col + 1, row) * dx);
+        const double top(at(col, row + 1) * (1.0 - dx)
+                         + at(col + 1, row + 1) * dx);
+        return bottom * (1.0 - dy) + top * dy;
+    }
+
     math::Extents2 extents_;
-    std::array<double, 4> undulation_;
+    int cols_;
+    int rows_;
+    std::vector<double> values_;
 };
-
-/** Exact undulation range over a cell (corner evaluation through the
- *  geoid convertor); used at coarse lods where a block spans too much
- *  geoid for corner-bilinear interpolation.
- */
-std::pair<double, double>
-exactUndulationRange(const vts::CsConvertor &shift
-                     , const math::Extents2 &cell)
-{
-    const auto corner([&](double x, double y)
-    {
-        return shift(math::Point3(x, y, 0.0))(2);
-    });
-    const auto a(corner(cell.ll(0), cell.ll(1)));
-    const auto b(corner(cell.ur(0), cell.ll(1)));
-    const auto c(corner(cell.ll(0), cell.ur(1)));
-    const auto d(corner(cell.ur(0), cell.ur(1)));
-    return { std::min(std::min(a, b), std::min(c, d))
-             , std::max(std::max(a, b), std::max(c, d)) };
-}
-
-/** Below this lod a metatile block spans too much surface for the
- *  block-corner bilinear undulation to be trusted; cells evaluate
- *  their geoid shift exactly (few blocks, few cells — cheap).
- */
-const vts::Lod undulationExactLodLimit(10);
 
 } // namespace
 
@@ -284,15 +407,13 @@ metatileFromStore(const vts::TileId &tileId
              : cachedConvertor(block.srs, rf.model.navigationSrs));
 
         // orthometric-to-raw-SDS shift for the serialized height range
-        const vts::CsConvertor *geoidShift
-            (geoidGrid
-             ? &cachedGeoidConvertor(block.srs, *geoidGrid, block.srs)
-             : nullptr);
         const auto undulation
-            (geoidShift ? UndulationGrid(*geoidShift, extents)
+            (geoidGrid
+             ? UndulationGrid
+             (cachedGeoidConvertor(block.srs, *geoidGrid, block.srs)
+              , cachedConvertor(block.srs, rf.model.navigationSrs)
+              , extents, geoidGridSpacing(*geoidGrid))
              : UndulationGrid());
-        const bool exactUndulation
-            (geoidShift && (tileId.lod < undulationExactLodLimit));
 
         // physical-space corner grid (planarSamples x planarSamples
         // quads per tile, corners shared between neighbours)
@@ -388,10 +509,7 @@ metatileFromStore(const vts::TileId &tileId
                      * still covers the mesh, which samples the
                      * undulation per vertex.
                      */
-                    const auto shift
-                        (exactUndulation
-                         ? exactUndulationRange(*geoidShift, cell)
-                         : undulation.range(cell));
+                    const auto shift(undulation.range(cell));
                     node.geomExtents.extents
                         = vts::GeomExtents::Extents
                         (cell.ll(0), cell.ll(1), cell.ur(0), cell.ur(1));
