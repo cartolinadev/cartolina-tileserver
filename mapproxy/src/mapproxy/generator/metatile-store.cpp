@@ -395,6 +395,12 @@ metatileFromStore(const vts::TileId &tileId
             continue;
         }
 
+        // derived-field converters and grids can fail on blocks that
+        // reach outside a projection's domain (polar caps); fail the
+        // whole metatile over to the warp path, which has its own
+        // handling
+        try {
+
         // physical converter for the planar texel; navigation-SRS
         // converter from the store's (geoid-shifted) datum for the
         // navtile height range — the warp path's own conversion
@@ -557,6 +563,14 @@ metatileFromStore(const vts::TileId &tileId
 
                 metatile.set(nodeId, node);
             }
+        }
+
+        } catch (const std::exception &e) {
+            LOG(warn2)
+                << "Metanode store: cannot derive block fields for "
+                << tileId << ": <" << e.what()
+                << ">; falling back to warp.";
+            return boost::none;
         }
     }
 

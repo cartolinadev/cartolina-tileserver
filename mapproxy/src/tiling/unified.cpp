@@ -233,6 +233,22 @@ public:
     double operator()(const math::Point2 &center
                       , const math::Size2f &samplePx) const
     {
+        try {
+            return scaleImpl(center, samplePx);
+        } catch (const std::exception&) {
+            /* Out-of-domain conversion (e.g. a source pixel just past
+             * the pole under a polar division node): the scale cannot
+             * be determined; report 1.0 — libgeo's own fallback —
+             * which keeps the navtile flag off.
+             */
+            return 1.0;
+        }
+    }
+
+private:
+    double scaleImpl(const math::Point2 &center
+                     , const math::Size2f &samplePx) const
+    {
         const auto srcGeo(fwd_(math::Point3(center(0), center(1), 0.0)));
         double row(0.0), col(0.0);
         gt_.geo2rowcol(srcGeo, row, col);
@@ -249,7 +265,6 @@ public:
         return std::sqrt(std::abs(math::crossProduct(a, b)));
     }
 
-private:
     geo::CsConvertor fwd_;
     geo::CsConvertor bwd_;
     geo::GeoTransform gt_;
@@ -414,6 +429,8 @@ cv::Mat filterPass(const fs::path &srcPath
             << "Cannot read filter pass result.";
     }
 
+    LOG(info3) << "Filter pass " << what << ": done.";
+
     return grid;
 }
 
@@ -493,7 +510,7 @@ void UnifiedPass::processNode
     if (!leafRange) { return; }
 
     LOG(info3)
-        << "Unified pass: division node " << node.id
+        << "Unified pass: processing division node " << node.id
         << " (srs: " << node.srs << "), leaf range "
         << leafLod << "/" << *leafRange << ".";
 
@@ -650,6 +667,9 @@ void UnifiedPass::processNode
         emit(node, srsDef, lod, parent);
         child = std::move(parent);
     }
+
+    LOG(info3)
+        << "Unified pass: division node " << node.id << " done.";
 }
 
 void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node

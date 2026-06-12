@@ -177,6 +177,10 @@ The externals under [externals/](externals/) are git submodules (see
 - Keep changes in the right layer and minimal; don't introduce unrelated
   functionality into a module just because it's a convenient spot. Prefer
   reusing an existing helper over duplicating logic.
+- Knuth's rule: premature optimization is the root of all evil. Do not buy
+  speculative performance with code complexity; optimize when a measurement
+  shows the need, against that measurement, and record deferred optimization
+  ideas in the wiki backlog instead of the codebase.
 - Before reimplementing anything, read the docs of the supporting libraries,
   especially GDAL and PROJ, and dig deep; much of what you need already
   exists. Write as little code as possible.
