@@ -444,7 +444,8 @@ SurfaceDem::generateMetatileImpl(const vts::TileId &tileId
     if (store_) {
         // RFC 7 metanode store path: no warp
         if (auto metatile = metatileFromStore
-            (tileId, *store_, resource(), index_->tileIndex, overrides))
+            (tileId, *store_, resource(), index_->tileIndex
+             , dem_.geoidGrid, overrides))
         {
             return std::move(*metatile);
         }

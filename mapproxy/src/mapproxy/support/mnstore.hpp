@@ -53,10 +53,13 @@ namespace vts = vtslibs::vts;
  * ancestor at the root LOD with x/y masked by ~((1 << order) - 1) and
  * root LODs at lod % metaDepth == 0.
  *
- * Stored heights are exactly what the v6 metatile serialises from the
- * warp path: raw (non-geoid-shifted) SDS vertical of the node's SDS
- * SRS. They are quantised to half floats biased outward (minZ down,
- * maxZ up) so the stored range is conservative.
+ * Stored heights are in the geoid-shifted SDS vertical declared by
+ * the header's geoidGrid (orthometric; raw SDS when no geoid grid is
+ * configured) — flat water collapses, and the values are
+ * body-generic. The v6 serializer converts to the raw SDS vertical
+ * at delivery by adding the geoid undulation. Heights are quantised
+ * to half floats biased outward (minZ down, maxZ up) so the stored
+ * range is conservative.
  */
 namespace mnstore {
 
@@ -70,7 +73,8 @@ struct NodeData {
 
     std::uint8_t flags;
 
-    /** Height range in raw SDS vertical datum, half-float encoded.
+    /** Height range in the store's vertical datum (geoid-shifted
+     *  SDS), half-float encoded.
      */
     std::uint16_t minZ;
     std::uint16_t maxZ;
@@ -105,7 +109,7 @@ struct NodeData {
 /** Store metadata; serialised in the file header.
  */
 struct Header {
-    static const std::uint16_t currentVersion = 1;
+    static const std::uint16_t currentVersion = 2;
 
     std::uint16_t version;
     std::uint8_t metaBinaryOrder;

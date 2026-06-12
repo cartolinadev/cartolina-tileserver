@@ -28,13 +28,19 @@
  *  precomputed node payload — no DEM warp.
  *
  * Stored fields (mesh/watertight via the paired flag index, minZ/maxZ
- * from the store) are combined with fields derived at delivery:
- * full-cell horizontal extents, midpoint surrogate, navtile height
- * range (raw-SDS to navigation SRS conversion at the cell center) and
- * the calibrated relief-corrected analytic texelSize.
+ * from the store, in the geoid-shifted orthometric SDS vertical) are
+ * combined with fields derived at delivery: the raw-SDS height range
+ * (geoid undulation evaluated at the block corners and bilinearly
+ * interpolated — sub-half-ulp at metatile scales), full-cell
+ * horizontal extents, midpoint surrogate, navtile height range
+ * (geoid-shifted SDS to navigation SRS at the cell center, the warp
+ * path's own conversion) and the calibrated relief-corrected analytic
+ * texelSize.
  */
 
 #include "utility/raise.hpp"
+
+#include "geo/srsdef.hpp"
 
 #include "vts-libs/vts/csconvertor.hpp"
 
@@ -93,6 +99,101 @@ const vts::CsConvertor& cachedConvertor(const std::string &from
     return icache->second;
 }
 
+/** Thread-cached convertor from the geoid-shifted SDS (the store's
+ *  vertical datum) to given target SRS.
+ */
+const vts::CsConvertor&
+cachedGeoidConvertor(const std::string &sds, const std::string &geoidGrid
+                     , const std::string &to)
+{
+    thread_local std::map<std::string, vts::CsConvertor> cache;
+    auto key(sds + "\0" + geoidGrid + "\0" + to);
+    auto icache(cache.find(key));
+    if (icache == cache.end()) {
+        icache = cache.emplace
+            (key, vts::CsConvertor
+             (geo::setGeoid(vr::system.srs(sds).srsDef, geoidGrid), to))
+            .first;
+    }
+    return icache->second;
+}
+
+/** Geoid undulation sampled at the block corners; bilinear lookup of
+ *  the orthometric-to-raw-SDS shift. The undulation varies smoothly
+ *  at metatile scales, so corner interpolation stays well within the
+ *  stored range's half-float bias.
+ */
+class UndulationGrid {
+public:
+    /** Identity grid (no geoid configured). */
+    UndulationGrid() : extents_(), undulation_{ 0.0, 0.0, 0.0, 0.0 } {}
+
+    UndulationGrid(const vts::CsConvertor &shift
+                   , const math::Extents2 &extents)
+        : extents_(extents)
+        , undulation_{
+            shift(math::Point3(extents.ll(0), extents.ll(1), 0.0))(2)
+            , shift(math::Point3(extents.ur(0), extents.ll(1), 0.0))(2)
+            , shift(math::Point3(extents.ll(0), extents.ur(1), 0.0))(2)
+            , shift(math::Point3(extents.ur(0), extents.ur(1), 0.0))(2) }
+    {}
+
+    double operator()(const math::Point2 &point) const {
+        const auto size(math::size(extents_));
+        if (!size.width || !size.height) { return undulation_[0]; }
+        const double fx((point(0) - extents_.ll(0)) / size.width);
+        const double fy((point(1) - extents_.ll(1)) / size.height);
+        const double bottom(undulation_[0]
+                            + fx * (undulation_[1] - undulation_[0]));
+        const double top(undulation_[2]
+                         + fx * (undulation_[3] - undulation_[2]));
+        return bottom + fy * (top - bottom);
+    }
+
+    /** Undulation range over a cell: bilinear extrema lie on the
+     *  corners, so the corner min/max is exact for the interpolant.
+     */
+    std::pair<double, double>
+    range(const math::Extents2 &cell) const {
+        const auto a(operator()(math::Point2(cell.ll(0), cell.ll(1))));
+        const auto b(operator()(math::Point2(cell.ur(0), cell.ll(1))));
+        const auto c(operator()(math::Point2(cell.ll(0), cell.ur(1))));
+        const auto d(operator()(math::Point2(cell.ur(0), cell.ur(1))));
+        return { std::min(std::min(a, b), std::min(c, d))
+                 , std::max(std::max(a, b), std::max(c, d)) };
+    }
+
+private:
+    math::Extents2 extents_;
+    std::array<double, 4> undulation_;
+};
+
+/** Exact undulation range over a cell (corner evaluation through the
+ *  geoid convertor); used at coarse lods where a block spans too much
+ *  geoid for corner-bilinear interpolation.
+ */
+std::pair<double, double>
+exactUndulationRange(const vts::CsConvertor &shift
+                     , const math::Extents2 &cell)
+{
+    const auto corner([&](double x, double y)
+    {
+        return shift(math::Point3(x, y, 0.0))(2);
+    });
+    const auto a(corner(cell.ll(0), cell.ll(1)));
+    const auto b(corner(cell.ur(0), cell.ll(1)));
+    const auto c(corner(cell.ll(0), cell.ur(1)));
+    const auto d(corner(cell.ur(0), cell.ur(1)));
+    return { std::min(std::min(a, b), std::min(c, d))
+             , std::max(std::max(a, b), std::max(c, d)) };
+}
+
+/** Below this lod a metatile block spans too much surface for the
+ *  block-corner bilinear undulation to be trusted; cells evaluate
+ *  their geoid shift exactly (few blocks, few cells — cheap).
+ */
+const vts::Lod undulationExactLodLimit(10);
+
 } // namespace
 
 boost::optional<vts::MetaTile>
@@ -100,6 +201,7 @@ metatileFromStore(const vts::TileId &tileId
                   , const mnstore::Store &store
                   , const Resource &resource
                   , const mmapped::TileIndex &tileIndex
+                  , const boost::optional<std::string> &geoidGrid
                   , const MetatileOverrides &overrides)
 {
     auto blocks(metatileBlocks(resource, tileId));
@@ -170,12 +272,27 @@ metatileFromStore(const vts::TileId &tileId
             continue;
         }
 
-        // raw-SDS converters: physical for the planar texel, navigation
-        // SRS for the navtile height range
+        // physical converter for the planar texel; navigation-SRS
+        // converter from the store's (geoid-shifted) datum for the
+        // navtile height range — the warp path's own conversion
         const auto &conv
             (cachedConvertor(block.srs, rf.model.physicalSrs));
         const auto &navConv
-            (cachedConvertor(block.srs, rf.model.navigationSrs));
+            (geoidGrid
+             ? cachedGeoidConvertor(block.srs, *geoidGrid
+                                    , rf.model.navigationSrs)
+             : cachedConvertor(block.srs, rf.model.navigationSrs));
+
+        // orthometric-to-raw-SDS shift for the serialized height range
+        const vts::CsConvertor *geoidShift
+            (geoidGrid
+             ? &cachedGeoidConvertor(block.srs, *geoidGrid, block.srs)
+             : nullptr);
+        const auto undulation
+            (geoidShift ? UndulationGrid(*geoidShift, extents)
+             : UndulationGrid());
+        const bool exactUndulation
+            (geoidShift && (tileId.lod < undulationExactLodLimit));
 
         // physical-space corner grid (planarSamples x planarSamples
         // quads per tile, corners shared between neighbours)
@@ -263,16 +380,27 @@ metatileFromStore(const vts::TileId &tileId
                          , extents.ur(1) - (j + 1) * ts.height
                          , extents.ll(0) + (i + 1) * ts.width
                          , extents.ur(1) - j * ts.height);
+                    const auto center(math::center(cell));
 
+                    /* Serialized z range is raw SDS: shift the stored
+                     * orthometric range by the local undulation,
+                     * widened by its within-cell spread so the range
+                     * still covers the mesh, which samples the
+                     * undulation per vertex.
+                     */
+                    const auto shift
+                        (exactUndulation
+                         ? exactUndulationRange(*geoidShift, cell)
+                         : undulation.range(cell));
                     node.geomExtents.extents
                         = vts::GeomExtents::Extents
                         (cell.ll(0), cell.ll(1), cell.ur(0), cell.ur(1));
                     node.geomExtents.z
-                        = vts::GeomExtents::ZRange(minZ, maxZ);
+                        = vts::GeomExtents::ZRange(minZ + shift.first
+                                                   , maxZ + shift.second);
                     node.geomExtents.makeAverageSurrogate();
 
                     if (navtile) {
-                        const auto center(math::center(cell));
                         const auto navMin
                             (navConv(math::Point3
                                      (center(0), center(1), minZ))(2));

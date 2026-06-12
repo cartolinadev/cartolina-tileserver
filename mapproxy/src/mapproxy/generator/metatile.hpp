@@ -92,6 +92,7 @@ vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
  * @param store opened metanode store
  * @param resource resource being served
  * @param tileIndex paired delivery flag index
+ * @param geoidGrid SDS vertical datum geoid grid (resource setting)
  * @param overrides credits/texture overrides
  * @return assembled metatile or boost::none
  */
@@ -100,6 +101,7 @@ metatileFromStore(const vts::TileId &tileId
                   , const mnstore::Store &store
                   , const Resource &resource
                   , const mmapped::TileIndex &tileIndex
+                  , const boost::optional<std::string> &geoidGrid
                   , const MetatileOverrides &overrides = {});
 
 // inines

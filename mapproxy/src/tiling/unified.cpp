@@ -255,43 +255,29 @@ private:
     geo::GeoTransform gt_;
 };
 
-/** Vertical conversion of stored heights: optional (monotone) height
- *  function followed by geoid-shifted-SDS to raw-SDS datum conversion,
- *  evaluated at the tile center — the post-aggregation value transform
- *  of RFC 7 section 4.2, applied at leaf granularity.
+/** Value transform of stored heights: the optional (monotone) height
+ *  function, applied post-aggregation per tile (RFC 7 section 4.2).
+ *  No datum conversion happens here: the store keeps the
+ *  geoid-shifted (orthometric) SDS vertical of the source values and
+ *  the v6 serializer shifts to the raw SDS vertical at delivery.
  */
 class ValueTransform {
 public:
-    ValueTransform(const geo::SrsDefinition &nodeSrsDef
-                   , const std::string &nodeSrs
-                   , const UnifiedConfig &config)
+    ValueTransform(const UnifiedConfig &config)
         : heightFunction_(config.heightFunction)
-    {
-        if (config.geoidGrid) {
-            conv_ = vts::CsConvertor
-                (geo::setGeoid(nodeSrsDef, *config.geoidGrid), nodeSrs);
-        }
-    }
+    {}
 
-    std::pair<double, double>
-    operator()(const math::Point2 &center, double min, double max) const {
+    std::pair<double, double> operator()(double min, double max) const {
         if (heightFunction_) {
             min = (*heightFunction_)(min);
             max = (*heightFunction_)(max);
             if (min > max) { std::swap(min, max); }
         }
-
-        if (conv_) {
-            min = (*conv_)(math::Point3(center(0), center(1), min))(2);
-            max = (*conv_)(math::Point3(center(0), center(1), max))(2);
-        }
-
         return { min, max };
     }
 
 private:
     HeightFunction::pointer heightFunction_;
-    boost::optional<vts::CsConvertor> conv_;
 };
 
 /** RAII GDAL dataset handle.
@@ -550,16 +536,11 @@ void UnifiedPass::processNode
     const auto maskMax(maskMaxFuture.get());
     const auto elevMin(elevMinFuture.get());
 
-    const ValueTransform transform(srsDef, node.srs, config_);
+    const ValueTransform transform(config_);
 
     // assemble leaf grid
     LodGrid leaf(*leafRange);
     {
-        const auto count(vts::TileRange::value_type(1) << depth);
-        const auto nodeSize(math::size(node.extents));
-        const math::Size2f ts(nodeSize.width / count
-                              , nodeSize.height / count);
-
         std::size_t cells(0), holes(0);
         for (int j(0); j < leaf.height(); ++j) {
             const auto y(leafRange->ll(1) + j);
@@ -586,10 +567,7 @@ void UnifiedPass::processNode
                      || (maskMin.at<std::uint8_t>(j, i) == 255));
                 leaf.watertight.at<std::uint8_t>(j, i) = watertight;
 
-                const math::Point2 center
-                    (extents.ll(0) + (i + 0.5) * ts.width
-                     , extents.ur(1) - (j + 0.5) * ts.height);
-                const auto range(transform(center, vMin, vMax));
+                const auto range(transform(vMin, vMax));
                 leaf.minZ.at<float>(j, i) = range.first;
                 leaf.maxZ.at<float>(j, i) = range.second;
                 ++cells;
