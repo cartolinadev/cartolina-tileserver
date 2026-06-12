@@ -1,3 +1,19 @@
+cartolina-tileserver (1.115metanodestore) testing; urgency=medium
+
+  * RFC 7 metanode store: precomputed metatiles served without the
+    serve-time DEM warp (orthometric store paired with the flag tile
+    index, warp kept as fallback)
+  * unified one-pass mapproxy-tiling (four pooled one-pixel-per-tile
+    GDAL filter passes + mip loop) replacing the per-tile per-LOD
+    analysis; legacy mode behind --legacy
+  * mapproxy-setup-resource metanode-store mode by default (normal-only
+    VRTWO); dem.min/dem.max needed only without a valid store
+  * new tools: mapproxy-mnstore, mapproxy-tidiff, mapproxy-texel-spike
+  * per-surface metaBinaryOrder/metaDepth plumbing (vts-libs mapConfig
+    advertisement); v6 serving validates effective (rf order, 1)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 12 Jun 2026 21:49:28 +0200
+
 cartolina-tileserver (1.114) testing; urgency=medium
 
   * style-based Cartolina surface introspection browser

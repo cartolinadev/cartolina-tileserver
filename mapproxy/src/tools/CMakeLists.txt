@@ -65,3 +65,11 @@ target_link_libraries(mapproxy-querymmti ${MODULE_LIBRARIES})
 target_compile_definitions(mapproxy-querymmti PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(mapproxy-querymmti)
 set_target_version(mapproxy-querymmti ${vts-mapproxy_VERSION})
+
+# ----------------------------------------------------------------------
+# --- installation
+# ----------------------------------------------------------------------
+
+# RFC 7 operator/diagnostic tools
+install(TARGETS mapproxy-mnstore mapproxy-tidiff mapproxy-texel-spike
+  RUNTIME DESTINATION bin COMPONENT tools)
