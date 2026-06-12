@@ -34,6 +34,7 @@
 #include "surface.hpp"
 
 #include "../support/coverage.hpp"
+#include "../support/mnstore.hpp"
 
 namespace vts = vtslibs::vts;
 //namespace vr = vtslibs::registry;
@@ -83,6 +84,11 @@ private:
 
     void loadLandcoverClassdef();
 
+    /** Opens and validates the metanode store (RFC 7); resets the
+     *  store on any mismatch so metatiles fall back to the warp path.
+     */
+    void openMetanodeStore();
+
     virtual unsigned int generatorRevision() const;
 
     const Definition &definition_;
@@ -99,6 +105,11 @@ private:
 
     // mask tree
     MaskTree maskTree_;
+
+    /** Metanode store (RFC 7); when present metatiles are served from
+     *  precomputed payload instead of the serve-time DEM warp.
+     */
+    std::unique_ptr<mnstore::Store> store_;
 };
 
 } // namespace generator

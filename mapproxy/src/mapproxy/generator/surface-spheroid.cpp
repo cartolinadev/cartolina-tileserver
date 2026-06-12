@@ -107,6 +107,8 @@ void SurfaceSpheroid::prepare_impl(Arsenal&)
 {
     LOG(info2) << "Preparing <" << id() << ">.";
 
+    checkPackaging();
+
     const auto &r(resource());
 
     // build properties

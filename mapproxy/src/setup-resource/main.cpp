@@ -64,6 +64,7 @@
 #include "generatevrtwo/generatevrtwo.hpp"
 #include "generatevrtwo/io.hpp"
 #include "tiling/tiling.hpp"
+#include "tiling/unified.hpp"
 #include "mapproxy/resource.hpp"
 #include "mapproxy/definition.hpp"
 #include "mapproxy/mapproxy.hpp"
@@ -105,6 +106,13 @@ struct Config {
     std::string mapproxyCtrl;
 
     bool parallel = true;
+
+    /** Legacy warp-path mode: build the three-pyramid VRTWO set and
+     *  run the legacy tiling (no metanode store). Default is the
+     *  RFC 7 metanode-store mode: normal DEM VRTWO only, unified
+     *  tiling pass, paired flag index + store.
+     */
+    bool legacyTiling = false;
 
     struct {
         boost::optional<fs::path> datasetHome;
@@ -212,6 +220,11 @@ void SetupResource::configuration(po::options_description &cmdline
          "is created and places as a first source for each band in "
          "all overviews.")
 
+        ("legacyTiling", po::value(&config_.legacyTiling)
+         ->default_value(config_.legacyTiling)->implicit_value(true)
+         , "Build the legacy three-pyramid VRTWO set and run the "
+         "legacy tiling analysis (warp serve path); no metanode store "
+         "is produced.")
         ("parallel", po::value(&config_.parallel)
          ->default_value(config_.parallel)
          , "Use OpenMP to parallelize work. Can be used "
@@ -653,20 +666,24 @@ fs::path createVrtWO(const calipers::Measurement &cm
                         , cm, config);
         }
 
-        LOG(info4) << "Generating minimum height overviews.";
-        {
-            LogLinePrefix linePrefix(" (min)");
-            createVrtWO(datasetPath, rootDir, "dem.min"
-                        , geo::GeoDataset::Resampling::minimum, cm
-                        , config);
-        }
+        if (config.legacyTiling) {
+            // min/max pyramids feed the legacy warp serve path only;
+            // the metanode store replaces them (RFC 7)
+            LOG(info4) << "Generating minimum height overviews.";
+            {
+                LogLinePrefix linePrefix(" (min)");
+                createVrtWO(datasetPath, rootDir, "dem.min"
+                            , geo::GeoDataset::Resampling::minimum, cm
+                            , config);
+            }
 
-        LOG(info4) << "Generating maximum height overviews.";
-        {
-            LogLinePrefix linePrefix(" (max)");
-            createVrtWO(datasetPath, rootDir, "dem.max"
-                        , geo::GeoDataset::Resampling::maximum, cm
-                        , config);
+            LOG(info4) << "Generating maximum height overviews.";
+            {
+                LogLinePrefix linePrefix(" (max)");
+                createVrtWO(datasetPath, rootDir, "dem.max"
+                            , geo::GeoDataset::Resampling::maximum, cm
+                            , config);
+            }
         }
         break;
 
@@ -910,6 +927,8 @@ int SetupResource::run()
 
     // 7) generate tiling information
     LOG(info4) << "Generating tiling information.";
+    if (config.legacyTiling
+        || (cm.datasetType != calipers::DatasetType::dem))
     {
         LogLinePrefix linePrefix(" (tiling)");
         tiling::Config tilingConfig;
@@ -918,6 +937,24 @@ int SetupResource::run()
                                  , cm.lodTileRanges(), tilingConfig));
 
         ti.save(rootDir / ("tiling." + resourceId_.referenceFrame));
+    } else {
+        // RFC 7 metanode-store mode: unified pass emitting the paired
+        // flag tile index and metanode store
+        LogLinePrefix linePrefix(" (tiling)");
+        tiling::UnifiedConfig unifiedConfig;
+        unifiedConfig.metaBinaryOrder = rf->metaBinaryOrder;
+        unifiedConfig.geoidGrid = config.geoidGrid;
+
+        const auto result
+            (tiling::generateUnified(mainDataset, *rf, cm.lodRange
+                                     , cm.lodTileRanges()
+                                     , unifiedConfig));
+
+        tiling::publishUnified
+            (result, unifiedConfig, resourceId_.referenceFrame
+             , cm.lodRange, cm.lodTileRanges()
+             , rootDir / ("tiling." + resourceId_.referenceFrame)
+             , rootDir / ("metanodes." + resourceId_.referenceFrame));
     }
 
     // 8) generate mapproxy resource configuration

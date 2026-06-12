@@ -53,6 +53,14 @@ public:
     virtual bool changed(const HeightFunction::pointer &other) const = 0;
 };
 
+/** Canonical compact JSON of a height function; empty string when
+ *  null. Used to compare configured and baked-in height functions.
+ *
+ * @param function height function (may be null)
+ * @return canonical JSON string
+ */
+std::string heightFunctionJson(const HeightFunction::pointer &function);
+
 typedef vtslibs::storage::Range<double> HeightRange;
 typedef vtslibs::storage::Range<double> ScaleRange;
 

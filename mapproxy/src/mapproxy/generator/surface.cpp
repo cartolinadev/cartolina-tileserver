@@ -290,6 +290,40 @@ bool SurfaceBase::loadFiles(const Definition &definition)
     return false;
 }
 
+unsigned int SurfaceBase::effectiveMetaBinaryOrder() const
+{
+    if (definition_.metaBinaryOrder) {
+        return *definition_.metaBinaryOrder;
+    }
+    return referenceFrame().metaBinaryOrder;
+}
+
+unsigned int SurfaceBase::effectiveMetaDepth() const
+{
+    return definition_.metaDepth ? *definition_.metaDepth : 1;
+}
+
+void SurfaceBase::checkPackaging() const
+{
+    /* The v6 metatile serializer and current cartolina-js clients can
+     * only consume single-LOD metatile blocks addressed by the
+     * reference-frame binary order. Non-default packaging is valid
+     * store/tooling input but cannot be served yet (deferred to the
+     * client shallow-subtree milestone).
+     */
+    if ((effectiveMetaBinaryOrder() != referenceFrame().metaBinaryOrder)
+        || (effectiveMetaDepth() != 1))
+    {
+        LOGTHROW(err2, std::runtime_error)
+            << "Generator for <" << id() << ">: effective metatile "
+            "packaging (metaBinaryOrder=" << effectiveMetaBinaryOrder()
+            << ", metaDepth=" << effectiveMetaDepth()
+            << ") is not servable by the v6 metatile path; current "
+            "clients require reference-frame order ("
+            << referenceFrame().metaBinaryOrder << ") and depth 1.";
+    }
+}
+
 bool SurfaceBase::updateProperties(const Definition &def)
 {
     bool changed(false);
@@ -313,6 +347,19 @@ bool SurfaceBase::updateProperties(const Definition &def)
     if (resource().revision > properties_.revision) {
         properties_.revision = resource().revision;
         changed = true;
+    }
+
+    // advertise effective metatile packaging (RFC 7)
+    {
+        const boost::optional<unsigned int>
+            mbo(effectiveMetaBinaryOrder()), md(effectiveMetaDepth());
+        if ((properties_.metaBinaryOrder != mbo)
+            || (properties_.metaDepth != md))
+        {
+            properties_.metaBinaryOrder = mbo;
+            properties_.metaDepth = md;
+            changed = true;
+        }
     }
 
     return changed;

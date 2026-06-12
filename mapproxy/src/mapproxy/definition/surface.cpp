@@ -81,6 +81,16 @@ void Surface::parse(const Json::Value &value)
         Json::get(*mergeBottomLod, value, "mergeBottomLod");
     }
 
+    if (value.isMember("metaBinaryOrder")) {
+        metaBinaryOrder = boost::in_place();
+        Json::get(*metaBinaryOrder, value, "metaBinaryOrder");
+    }
+
+    if (value.isMember("metaDepth")) {
+        metaDepth = boost::in_place();
+        Json::get(*metaDepth, value, "metaDepth");
+    }
+
     heightFunction = HeightFunction::parse(value, "heightFunction");
 
     if (value.isMember("introspection")) {
@@ -116,6 +126,14 @@ void Surface::build(Json::Value &value) const
     }
     if (mergeBottomLod) {
         value["mergeBottomLod"] = *mergeBottomLod;
+    }
+
+    if (metaBinaryOrder) {
+        value["metaBinaryOrder"] = *metaBinaryOrder;
+    }
+
+    if (metaDepth) {
+        value["metaDepth"] = *metaDepth;
     }
 
     if (heightFunction) {
@@ -157,6 +175,14 @@ Changed Surface::changed_impl(const DefinitionBase &o)
 
     if (introspection != other.introspection) {
         return Changed::safely;
+    }
+
+    if ((metaBinaryOrder != other.metaBinaryOrder)
+        || (metaDepth != other.metaDepth))
+    {
+        // metatile packaging changes metatile addressing and the
+        // metanode store page layout
+        return Changed::yes;
     }
 
     if (HeightFunction::changed(heightFunction, other.heightFunction)) {

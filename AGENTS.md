@@ -186,3 +186,7 @@ The externals under [externals/](externals/) are git submodules (see
   (`mapproxy/`), not in a shared module. When in doubt put it in the
   application — you can always lift it into a module later once a clean,
   reusable abstraction has emerged.
+- New modules (files created in this fork) carry the copyright line
+  `Copyright (c) YYYY Montevallo Consulting, s.r.o.` (current year) in the
+  standard BSD header block.
+

@@ -29,6 +29,7 @@
 #include "utility/enum-io.hpp"
 
 #include "jsoncpp/json.hpp"
+#include "jsoncpp/io.hpp"
 #include "jsoncpp/as.hpp"
 
 #include "heightfunction.hpp"
@@ -136,4 +137,17 @@ bool HeightFunction::changed(const HeightFunction::pointer &l
 {
     if (!l) { return bool(r); }
     return l->changed(r);
+}
+
+std::string heightFunctionJson(const HeightFunction::pointer &function)
+{
+    if (!function) { return {}; }
+
+    Json::Value value(Json::objectValue);
+    function->build(value);
+
+    std::ostringstream os;
+    os.precision(15);
+    Json::write(os, value, false);
+    return os.str();
 }

@@ -24,6 +24,7 @@ set(mapproxy-core_SOURCES
   support/atlas.hpp support/atlas.cpp
 
   support/mmapped/tilesetindex.hpp support/mmapped/tilesetindex.cpp
+  support/mnstore.hpp support/mnstore.cpp
   heightfunction.hpp heightfunction.cpp
 
   # resource definitions
@@ -136,6 +137,7 @@ set(mapproxy_SOURCES
   generator/generators.hpp generator/generators.cpp
   generator/factory.hpp generator/registry.cpp
   generator/metatile.hpp generator/metatile.cpp
+  generator/metatile-store.cpp
   generator/demregistry.hpp generator/demregistry.cpp
   generator/providers.hpp
 

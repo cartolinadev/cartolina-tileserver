@@ -32,6 +32,7 @@
 
 #include "../support/coverage.hpp"
 #include "../support/mmapped/tileindex.hpp"
+#include "../support/mnstore.hpp"
 
 #include "../generator.hpp"
 
@@ -81,6 +82,25 @@ vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
                               , const HeightFunction::pointer &heightFunction
                               = HeightFunction::pointer()
                               , const MetatileOverrides &overrides = {});
+
+/** Builds a metatile from the metanode store (RFC 7) without a DEM
+ *  warp. Returns boost::none when the store cannot serve this
+ *  metatile (page or node payload missing for tiles the flag index
+ *  claims) so the caller can fall back to the warp path.
+ *
+ * @param tileId metatile id
+ * @param store opened metanode store
+ * @param resource resource being served
+ * @param tileIndex paired delivery flag index
+ * @param overrides credits/texture overrides
+ * @return assembled metatile or boost::none
+ */
+boost::optional<vts::MetaTile>
+metatileFromStore(const vts::TileId &tileId
+                  , const mnstore::Store &store
+                  , const Resource &resource
+                  , const mmapped::TileIndex &tileIndex
+                  , const MetatileOverrides &overrides = {});
 
 // inines
 

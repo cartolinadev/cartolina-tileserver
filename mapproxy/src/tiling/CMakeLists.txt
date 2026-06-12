@@ -1,11 +1,12 @@
 # test program
 define_module(BINARY mp-tiling
-  DEPENDS vts-libs service gdal-drivers geometry geo
+  DEPENDS mapproxy-core vts-libs service gdal-drivers geometry geo
   Boost_FILESYSTEM
   Boost_PROGRAM_OPTIONS)
 
 set(mp-tiling_SOURCES
   tiling.hpp tiling.cpp
+  unified.hpp unified.cpp
   )
 
 add_library(mp-tiling ${mp-tiling_SOURCES})
@@ -19,7 +20,7 @@ buildsys_library(mp-tiling)
 
 # test program
 define_module(BINARY mapproxy-tiling
-  DEPENDS vts-libs service gdal-drivers geometry geo
+  DEPENDS mapproxy-core vts-libs service gdal-drivers geometry geo
   Boost_FILESYSTEM
   Boost_PROGRAM_OPTIONS)
 

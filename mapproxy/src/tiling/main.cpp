@@ -52,7 +52,14 @@
 #include "vts-libs/vts/io.hpp"
 #include "vts-libs/vts/tileindex.hpp"
 
+#include "jsoncpp/json.hpp"
+#include "jsoncpp/io.hpp"
+
+#include "mapproxy/support/mnstore.hpp"
+#include "mapproxy/heightfunction.hpp"
+
 #include "./tiling.hpp"
+#include "./unified.hpp"
 
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
@@ -168,8 +175,11 @@ private:
 
     int runImpl();
 
+    int runUnified(const vr::ReferenceFrame &rf);
+
     fs::path input_;
     fs::path output_;
+    fs::path storeOutput_;
     std::string referenceFrame_;
     vts::LodRange lodRange_;
     vts::TileRange tileRange_;
@@ -177,10 +187,14 @@ private:
     UnifiedTileRange::list tileRanges_;
 
     tiling::Config config_;
+    tiling::UnifiedConfig unifiedConfig_;
+    bool legacy_;
+    boost::optional<unsigned int> metaBinaryOrder_;
     fs::path dataset_;
 
     bool noexcept_;
 };
+
 
 void Tiling::configuration(po::options_description &cmdline
                             , po::options_description &config
@@ -211,6 +225,26 @@ void Tiling::configuration(po::options_description &cmdline
          ->default_value(config_.forceWatertight)->implicit_value(true)
          , "Treats all partial tiles as watertight. Will lie about the holes "
            "in the dataset.")
+
+        ("legacy", "Use the legacy per-tile per-LOD analysis warp and "
+         "produce the flag tile index only (no metanode store).")
+        ("store", po::value<fs::path>(&storeOutput_)
+         , "Path of the output metanode store if different from "
+         "input/metanodes.referenceFrame.")
+        ("metaBinaryOrder", po::value<unsigned int>()
+         , "Metatile packaging: horizontal binary order override "
+         "(defaults to the reference frame value).")
+        ("metaDepth", po::value(&unifiedConfig_.metaDepth)
+         ->default_value(unifiedConfig_.metaDepth)
+         , "Metatile packaging: number of LOD levels per metatile "
+         "delivery unit.")
+        ("geoidGrid", po::value<std::string>()
+         , "Geoid grid of the SDS vertical datum (resource geoidGrid "
+         "setting); stored heights are converted to the raw SDS "
+         "vertical, matching the serve path.")
+        ("heightFunction", po::value<fs::path>()
+         , "Path to a JSON file with a {\"heightFunction\": ...} "
+         "definition baked into stored heights (resource setting).")
 
         ("noexcept", "Do not catch exceptions, let the program crash.")
         ;
@@ -246,6 +280,31 @@ void Tiling::configure(const po::variables_map &vars)
     }
 
     noexcept_ = vars.count("noexcept");
+
+    legacy_ = vars.count("legacy");
+
+    if (vars.count("metaBinaryOrder")) {
+        metaBinaryOrder_ = vars["metaBinaryOrder"].as<unsigned int>();
+    }
+
+    if (vars.count("geoidGrid")) {
+        unifiedConfig_.geoidGrid = vars["geoidGrid"].as<std::string>();
+    }
+
+    if (vars.count("heightFunction")) {
+        const auto hfPath(vars["heightFunction"].as<fs::path>());
+        std::ifstream file(hfPath.string());
+        const auto value(Json::read(file, hfPath));
+        unifiedConfig_.heightFunction
+            = HeightFunction::parse(value, "heightFunction");
+    }
+
+    unifiedConfig_.tileSampling = config_.tileSampling;
+    unifiedConfig_.forceWatertight = config_.forceWatertight;
+
+    if (!vars.count("store")) {
+        storeOutput_ = input_ / ("metanodes." + referenceFrame_);
+    }
 
     LOG(info3, log_)
         << "Config:"
@@ -306,6 +365,8 @@ int Tiling::runImpl()
 
     auto ds(geo::GeoDataset::open(dataset_));
 
+    if (!legacy_) { return runUnified(rf); }
+
     auto ti(tiling::generate(dataset_, rf, lodRange_
                              , asLodTileRangeList(lodRange_.min, tileRanges_)
                              , config_));
@@ -313,6 +374,23 @@ int Tiling::runImpl()
     LOG(info3) << "Saving generated tile index into " << output_ << ".";
     ti.save(output_);
     LOG(info3) << "Tile index saved.";
+
+    return EXIT_SUCCESS;
+}
+
+int Tiling::runUnified(const vr::ReferenceFrame &rf)
+{
+    unifiedConfig_.metaBinaryOrder
+        = (metaBinaryOrder_ ? *metaBinaryOrder_ : rf.metaBinaryOrder);
+
+    const auto tileRanges(asLodTileRangeList(lodRange_.min, tileRanges_));
+
+    auto result(tiling::generateUnified
+                (dataset_, rf, lodRange_, tileRanges, unifiedConfig_));
+
+    tiling::publishUnified(result, unifiedConfig_, referenceFrame_
+                           , lodRange_, tileRanges, output_
+                           , storeOutput_);
 
     return EXIT_SUCCESS;
 }

@@ -25,6 +25,7 @@
  */
 
 #include <new>
+#include <fstream>
 
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
@@ -121,6 +122,9 @@ SurfaceDem::SurfaceDem(const Params &params)
         // remember dem in registry
         addToRegistry();
 
+        // attach the metanode store when a valid one is paired
+        openMetanodeStore();
+
     } else {
         success = false;
     }
@@ -166,12 +170,12 @@ void SurfaceDem::prepare_impl(Arsenal&)
 {
     LOG(info2) << "Preparing <" << id() << ">.";
 
+    checkPackaging();
+
     const auto &r(resource());
 
-    // try to open datasets
+    // try to open dataset
     auto dataset(geo::GeoDataset::open(dem_.dataset));
-    auto datasetMin(geo::GeoDataset::open(dem_.dataset + ".min"));
-    auto datasetMax(geo::GeoDataset::open(dem_.dataset + ".max"));
 
     // open optional landcover dataset + load lc class definition
     if (landcover_) {
@@ -203,6 +207,10 @@ void SurfaceDem::prepare_impl(Arsenal&)
     properties_.tileRange = r.tileRange;
     properties_.revision = r.revision;
 
+    // advertise effective metatile packaging (RFC 7)
+    properties_.metaBinaryOrder = effectiveMetaBinaryOrder();
+    properties_.metaDepth = effectiveMetaDepth();
+
     // optional tuning properties
     properties_.nominalTexelSize = definition_.nominalTexelSize;
     if (definition_.mergeBottomLod) {
@@ -210,11 +218,12 @@ void SurfaceDem::prepare_impl(Arsenal&)
     }
 
     {
+        const auto tilingPath
+            (absoluteDataset(definition_.dem.dataset)
+             + "/tiling." + r.id.referenceFrame);
+
         vts::tileset::Index index(referenceFrame().metaBinaryOrder);
-        prepareTileIndex(index
-                         , (absoluteDataset(definition_.dem.dataset)
-                            + "/tiling." + r.id.referenceFrame)
-                         , r, true, maskTree_);
+        prepareTileIndex(index, tilingPath, r, true, maskTree_);
 
         // save it all
         vts::tileset::saveConfig(filePath(vts::File::config), properties_);
@@ -227,12 +236,132 @@ void SurfaceDem::prepare_impl(Arsenal&)
         mmapped::TileIndex::write(tmpPath, index.tileIndex);
         fs::rename(tmpPath, deliveryIndexPath);
 
+        /* Record which flag tile index the delivery index was derived
+         * from; the metanode store is used only when its pairing
+         * digest matches this record (RFC 7), so a store can never be
+         * paired with a delivery index built from another tiling.
+         */
+        {
+            std::ofstream source
+                ((root() / "delivery.index.src").string()
+                 , std::ostream::out | std::ostream::trunc);
+            source << mnstore::fileDigest(tilingPath) << "\n";
+        }
+
         // open delivery index
         index_ = boost::in_place(referenceFrame().metaBinaryOrder
                                  , deliveryIndexPath);
     }
 
+    openMetanodeStore();
+
+    if (!store_) {
+        /* No (valid) metanode store: the metatile serve path needs the
+         * legacy min/max pyramids (RFC 7 warp fallback). A normal-only
+         * dataset without a valid store is a resource health error.
+         */
+        auto datasetMin(geo::GeoDataset::open(dem_.dataset + ".min"));
+        auto datasetMax(geo::GeoDataset::open(dem_.dataset + ".max"));
+    }
+
     addToRegistry();
+}
+
+void SurfaceDem::openMetanodeStore()
+{
+    store_.reset();
+
+    const auto datasetDir(absoluteDataset(definition_.dem.dataset));
+    const fs::path storePath
+        (datasetDir + "/metanodes." + referenceFrameId());
+    const fs::path tilingPath
+        (datasetDir + "/tiling." + referenceFrameId());
+
+    if (!fs::exists(storePath)) {
+        LOG(info2)
+            << "Generator for <" << id() << ">: no metanode store at "
+            << storePath << "; metatiles use the warp path.";
+        return;
+    }
+
+    try {
+        auto store(std::make_unique<mnstore::Store>(storePath));
+        const auto &header(store->header());
+
+        auto reject([&](const std::string &what) {
+            LOGTHROW(err2, std::runtime_error)
+                << "Metanode store " << storePath << ": " << what;
+        });
+
+        if (header.referenceFrame != referenceFrameId()) {
+            reject("reference frame mismatch (store: "
+                   + header.referenceFrame + ").");
+        }
+
+        if ((header.metaBinaryOrder != effectiveMetaBinaryOrder())
+            || (header.metaDepth != effectiveMetaDepth()))
+        {
+            reject("metatile packaging mismatch.");
+        }
+
+        const auto geoidGrid(definition_.dem.geoidGrid
+                             ? *definition_.dem.geoidGrid
+                             : std::string());
+        if (header.geoidGrid != geoidGrid) {
+            reject("geoid grid mismatch (store: '"
+                   + header.geoidGrid + "', resource: '"
+                   + geoidGrid + "').");
+        }
+
+        if (header.heightFunction
+            != heightFunctionJson(definition_.heightFunction))
+        {
+            reject("height function mismatch.");
+        }
+
+        if (definition_.mask) {
+            reject("resource uses a mask tree; not supported by the "
+                   "store path.");
+        }
+
+        const auto pairing(mnstore::fileDigest(tilingPath));
+        if (header.pairing != pairing) {
+            reject("pairing mismatch with flag tile index (store: "
+                   + header.pairing + ", index: " + pairing + ").");
+        }
+
+        /* The delivery index is a cached artifact derived from the
+         * flag tile index at prepare time; require it to come from
+         * the same tiling the store is paired with, otherwise a
+         * re-tiled dataset would pair a new store with a stale
+         * delivery index until the resource is re-prepared.
+         */
+        {
+            const auto sourcePath(root() / "delivery.index.src");
+            std::string derivedFrom;
+            if (fs::exists(sourcePath)) {
+                std::ifstream source(sourcePath.string());
+                source >> derivedFrom;
+            }
+            if (derivedFrom != pairing) {
+                reject("delivery index is not derived from the paired "
+                       "flag tile index; re-prepare the resource "
+                       "(bump its revision or clear its cache).");
+            }
+        }
+
+        store_ = std::move(store);
+        LOG(info3)
+            << "Generator for <" << id() << ">: serving metatiles "
+            "from metanode store " << storePath << " ("
+            << store_->pageCount() << " pages, pairing "
+            << header.pairing << ").";
+    } catch (const std::exception &e) {
+        LOG(warn3)
+            << "Generator for <" << id() << ">: ignoring metanode "
+            "store: " << e.what() << " Metatiles use the warp path.";
+        store_.reset();
+    }
 }
 
 void SurfaceDem::addToRegistry()
@@ -312,6 +441,16 @@ SurfaceDem::generateMetatileImpl(const vts::TileId &tileId
                                  , Sink &sink, Arsenal &arsenal
                                  , const MetatileOverrides &overrides) const
 {
+    if (store_) {
+        // RFC 7 metanode store path: no warp
+        if (auto metatile = metatileFromStore
+            (tileId, *store_, resource(), index_->tileIndex, overrides))
+        {
+            return std::move(*metatile);
+        }
+        // store cannot serve this metatile -> warp fallback
+    }
+
     return metatileFromDem(tileId, sink, arsenal, resource()
                            , index_->tileIndex, dem_.dataset
                            , dem_.geoidGrid, maskTree_, boost::none
