@@ -375,6 +375,8 @@ int Tiling::runImpl()
     ti.save(output_);
     LOG(info3) << "Tile index saved.";
 
+    LOG(info4) << "Done.";
+
     return EXIT_SUCCESS;
 }
 
@@ -391,6 +393,8 @@ int Tiling::runUnified(const vr::ReferenceFrame &rf)
     tiling::publishUnified(result, unifiedConfig_, referenceFrame_
                            , lodRange_, tileRanges, output_
                            , storeOutput_);
+
+    LOG(info4) << "Done.";
 
     return EXIT_SUCCESS;
 }

@@ -28,6 +28,7 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <future>
 #include <map>
 #include <sstream>
 
@@ -327,14 +328,20 @@ private:
  *  may silently swap in an (averaging) overview, which would bias the
  *  reduced range.
  */
-cv::Mat filterPass(::GDALDatasetH src
+cv::Mat filterPass(const fs::path &srcPath
                    , const geo::SrsDefinition &dstSrs
                    , const math::Size2i &size
                    , const math::Extents2 &extents
                    , GDALDataType dataType
                    , const boost::optional<double> &dstNodata
-                   , const char *resampling)
+                   , const char *resampling
+                   , const std::string &what)
 {
+    // pass-private dataset handle: the four passes run concurrently
+    // and GDAL dataset handles are not thread-safe
+    const GdalHandle source(srcPath);
+    auto src(source.get());
+
     char **argv(nullptr);
     const auto add([&](const std::string &arg)
     {
@@ -380,6 +387,25 @@ cv::Mat filterPass(::GDALDatasetH src
             << "Cannot build GDALWarp options.";
     }
 
+    // per-decile progress so long planetary passes are not silent
+    struct Progress {
+        std::string what;
+        int lastDecile = 0;
+    } progress{ what, 0 };
+    ::GDALWarpAppOptionsSetProgress
+        (options, [](double complete, const char*, void *data) -> int
+    {
+        auto &progress(*static_cast<Progress*>(data));
+        const int decile(complete * 10.0);
+        if (decile > progress.lastDecile) {
+            progress.lastDecile = decile;
+            LOG(info3)
+                << "Filter pass " << progress.what << ": "
+                << (10 * decile) << "%.";
+        }
+        return TRUE;
+    }, &progress);
+
     int usageError(0);
     auto out(::GDALWarp("filter-pass", nullptr, 1, &src, options
                         , &usageError));
@@ -414,10 +440,9 @@ public:
                 , const UnifiedConfig &config)
         : referenceFrame_(referenceFrame), lodRange_(lodRange)
         , world_(tileRanges), config_(config)
+        , dataset_(dataset)
         , dem_(geo::GeoDataset::open(dataset))
         , maskVrt_(dataset)
-        , demHandle_(dataset)
-        , maskHandle_(maskVrt_.path())
     {
         storeHeader_.metaBinaryOrder = config.metaBinaryOrder;
         storeHeader_.metaDepth = config.metaDepth;
@@ -455,10 +480,9 @@ private:
     const World world_;
     const UnifiedConfig &config_;
 
+    const fs::path dataset_;
     geo::GeoDataset dem_;
     MaskVrt maskVrt_;
-    GdalHandle demHandle_;
-    GdalHandle maskHandle_;
 
     mnstore::Header storeHeader_;
     vts::TileIndex tileIndex_;
@@ -498,21 +522,33 @@ void UnifiedPass::processNode
     // (the VRT mask band has none) with destinations initialized to 0,
     // elevation passes inherit source nodata so invalid pixels cannot
     // poison the range
-    LOG(info3) << "Unified pass: warping mask min/max ("
-               << gridSize << " px).";
-    const auto maskMin
-        (filterPass(maskHandle_.get(), srsDef, gridSize, extents
-                    , GDT_Byte, boost::none, "min"));
-    const auto maskMax
-        (filterPass(maskHandle_.get(), srsDef, gridSize, extents
-                    , GDT_Byte, boost::none, "max"));
-    LOG(info3) << "Unified pass: warping elevation min/max.";
-    const auto elevMin
-        (filterPass(demHandle_.get(), srsDef, gridSize, extents
-                    , GDT_Float32, ElevationNodata, "min"));
+    LOG(info3)
+        << "Unified pass: running the four filter passes ("
+        << gridSize << " px each).";
+    auto maskMinFuture
+        (std::async(std::launch::async, [&]() {
+            return filterPass(maskVrt_.path(), srsDef, gridSize
+                              , extents, GDT_Byte, boost::none, "min"
+                              , "mask min");
+        }));
+    auto maskMaxFuture
+        (std::async(std::launch::async, [&]() {
+            return filterPass(maskVrt_.path(), srsDef, gridSize
+                              , extents, GDT_Byte, boost::none, "max"
+                              , "mask max");
+        }));
+    auto elevMinFuture
+        (std::async(std::launch::async, [&]() {
+            return filterPass(dataset_, srsDef, gridSize, extents
+                              , GDT_Float32, ElevationNodata, "min"
+                              , "elevation min");
+        }));
     const auto elevMax
-        (filterPass(demHandle_.get(), srsDef, gridSize, extents
-                    , GDT_Float32, ElevationNodata, "max"));
+        (filterPass(dataset_, srsDef, gridSize, extents, GDT_Float32
+                    , ElevationNodata, "max", "elevation max"));
+    const auto maskMin(maskMinFuture.get());
+    const auto maskMax(maskMaxFuture.get());
+    const auto elevMin(elevMinFuture.get());
 
     const ValueTransform transform(srsDef, node.srs, config_);
 
