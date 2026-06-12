@@ -226,8 +226,10 @@ metatileFromDemImpl(const vts::TileId &tileId, Sink &sink, Arsenal &arsenal
             return;
         }
 
-        // not fully valid: generate this node's validty info
-        vts::NodeInfo ni(rf, nodeId);
+        // not fully valid: generate this node's validity info;
+        // derive from the block ancestor (shares the constraint
+        // sampler -- a fresh NodeInfo builds a PROJ pipeline)
+        const auto ni(deriveNodeInfo(block.commonAncestor, nodeId));
         if (!ni.valid()) { return; }
 
         // check tileindex along with RF validity for each child

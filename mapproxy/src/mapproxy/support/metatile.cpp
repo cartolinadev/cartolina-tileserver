@@ -284,3 +284,24 @@ cv::Mat boundlayerMetatileFromMaskTree(const vts::TileId &tileId
 
     return metatile;
 }
+
+vts::NodeInfo deriveNodeInfo(const vts::NodeInfo &ancestor
+                             , const vts::TileId &tileId)
+{
+    auto nodeInfo(ancestor);
+    for (vts::Lod lod(ancestor.nodeId().lod); lod < tileId.lod; ++lod) {
+        if (!nodeInfo.valid()) {
+            /* Invalidity propagates to every descendant and invalid
+             * structure nodes cannot be descended; the caller only
+             * consults valid() in this case.
+             */
+            return nodeInfo;
+        }
+        const vts::Lod diff(tileId.lod - lod - 1);
+        const vts::TileId childId(lod + 1, tileId.x >> diff
+                                  , tileId.y >> diff);
+        nodeInfo = nodeInfo.child
+            (vts::Child(childId, (childId.x & 1) + 2 * (childId.y & 1)));
+    }
+    return nodeInfo;
+}

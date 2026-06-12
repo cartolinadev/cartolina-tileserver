@@ -126,4 +126,18 @@ cv::Mat boundlayerMetatileFromMaskTree(const vts::TileId &tileId
                                        , const MaskTree &maskTree
                                        , const MetatileBlock::list &blocks);
 
+
+/** Derives a descendant's node info by stepwise child() descent from
+ *  an ancestor. Derived infos share the ancestor's constraint
+ *  sampler; a from-scratch NodeInfo builds a new PROJ pipeline per
+ *  construction, which costs milliseconds on constrained subtrees
+ *  (melown2015 polar caps) and dominates coarse-metatile assembly.
+ *
+ * @param ancestor ancestor node info (must be an ancestor of tileId)
+ * @param tileId descendant tile id
+ * @return descendant node info
+ */
+vts::NodeInfo deriveNodeInfo(const vts::NodeInfo &ancestor
+                             , const vts::TileId &tileId);
+
 #endif // mapproxy_support_metatile_hpp_included_

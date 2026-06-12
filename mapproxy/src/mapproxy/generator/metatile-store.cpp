@@ -75,15 +75,17 @@ inline MetaFlag::value_type ti2metaFlags(TiFlag::value_type ti)
     return meta;
 }
 
-/** Per-tile planar-texel sampling density: full warp-equivalent 8x8
- *  quads at coarse lods where projection curvature matters, tile
- *  corners only at deep lods where the cell is locally flat.
+/** Per-tile planar-texel sampling density: tile corners at deep lods
+ *  where the cell is locally flat, 2x2 quads below to track
+ *  projection curvature. The phase-1 spike measured even
+ *  corner-sampling within a few percent of the warp value at coarse
+ *  lods, and coarse-lod texelSize only steers instantly-transited
+ *  levels — denser sampling buys nothing but CsConvertor calls,
+ *  which dominate coarse-metatile serve time.
  */
 int planarSamples(vts::Lod lod)
 {
-    if (lod >= 10) { return 1; }
-    if (lod >= 7) { return 2; }
-    return 8;
+    return (lod >= 10) ? 1 : 2;
 }
 
 /** Returns a thread-cached convertor; CsConvertor construction
@@ -196,7 +198,8 @@ public:
     UndulationGrid(const vts::CsConvertor &shift
                    , const vts::CsConvertor &toGridCrs
                    , const math::Extents2 &extents
-                   , double spacing)
+                   , double spacing
+                   , const math::Size2 &blockCells)
         : extents_(extents)
     {
         // block footprint in the geoid grid CRS (corner bounding box)
@@ -214,14 +217,22 @@ public:
         }
         const auto span(math::size(footprint));
 
-        const auto cells([&](double span) -> int
+        /* Lattice density: enough nodes to stay at the geoid grid's
+         * own pitch, but never denser than two lattice cells per
+         * metatile cell — beyond that the per-cell undulation spread
+         * is already resolved, and the extra rows only add
+         * conversion cost on coarse blocks whose height ranges dwarf
+         * the residual (meters) anyway.
+         */
+        const auto cells([&](double span, int blockCells) -> int
         {
             if (!(span > 0.0) || !(spacing > 0.0)) { return 1; }
-            return std::max(1, std::min(64, int(std::ceil
-                                                (span / spacing))));
+            const int byPitch(std::ceil(span / spacing));
+            return std::max(1, std::min(std::min(64, 2 * blockCells)
+                                        , byPitch));
         });
-        cols_ = cells(span.width);
-        rows_ = cells(span.height);
+        cols_ = cells(span.width, blockCells.width);
+        rows_ = cells(span.height, blockCells.height);
 
         const auto size(math::size(extents));
         values_.reserve((cols_ + 1) * (rows_ + 1));
@@ -360,8 +371,10 @@ metatileFromStore(const vts::TileId &tileId
             return;
         }
 
-        // not fully valid: generate this node's validity info
-        vts::NodeInfo ni(rf, nodeId);
+        // not fully valid: generate this node's validity info;
+        // derive from the block ancestor (shares the constraint
+        // sampler -- a fresh NodeInfo builds a PROJ pipeline)
+        const auto ni(deriveNodeInfo(block.commonAncestor, nodeId));
         if (!ni.valid()) { return; }
 
         for (const auto &child : vts::children(nodeId)) {
@@ -418,7 +431,7 @@ metatileFromStore(const vts::TileId &tileId
              ? UndulationGrid
              (cachedGeoidConvertor(block.srs, *geoidGrid, block.srs)
               , cachedConvertor(block.srs, rf.model.navigationSrs)
-              , extents, geoidGridSpacing(*geoidGrid))
+              , extents, geoidGridSpacing(*geoidGrid), bSize)
              : UndulationGrid());
 
         // physical-space corner grid (planarSamples x planarSamples
