@@ -200,16 +200,25 @@ void Generators::Detail::prepare(const Generator::pointer &generator)
                 replace(original, generator);
             }
         } catch (const std::exception &e) {
-            LOG(warn2)
-                << "Failed to prepare generator for <"
-                << generator->resource().id << "> (" << e.what()
-                << "); removing from set of known generators.";
+            if (generator->replace()) {
+                LOG(warn2)
+                    << "Failed to prepare replacement generator for <"
+                    << generator->resource().id << "> (" << e.what()
+                    << "); keeping previous ready revision.";
+            } else {
+                LOG(warn2)
+                    << "Failed to prepare generator for <"
+                    << generator->resource().id << "> (" << e.what()
+                    << "); removing from set of known generators.";
+            }
 
             resourceBackend_->error(generator->resource().id, e.what());
 
-            // erease from map (under lock)
-            std::unique_lock<std::mutex> lock(lock_);
-            serving_.erase(generator);
+            if (!generator->replace()) {
+                // erase from map (under lock)
+                std::unique_lock<std::mutex> lock(lock_);
+                serving_.erase(generator);
+            }
         }
         --preparing_;
     });

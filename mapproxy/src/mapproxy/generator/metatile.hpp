@@ -27,6 +27,10 @@
 #ifndef mapproxy_metatile_hpp_included_
 #define mapproxy_metatile_hpp_included_
 
+#include <memory>
+
+#include <boost/filesystem.hpp>
+
 #include "vts-libs/vts/tileindex.hpp"
 #include "vts-libs/vts/metatile.hpp"
 
@@ -56,6 +60,38 @@ struct MetatileOverrides {
 
     vr::IdSet mergedCredits(const vr::IdSet &original) const;
 };
+
+/** Metanode-store validation parameters shared by DEM-surface and
+ *  tiled-geodata metatile generators.
+ */
+struct MetanodeStoreConfig {
+    std::string id;
+    boost::filesystem::path datasetDir;
+    boost::filesystem::path root;
+    std::string referenceFrame;
+    unsigned int metaBinaryOrder = 5;
+    unsigned int metaDepth = 1;
+    boost::optional<std::string> geoidGrid;
+    std::string heightFunction;
+    bool hasMask = false;
+    vts::LodRange lodRange = vts::LodRange::emptyRange();
+};
+
+/** Opens and validates a metanode store. Returns null when the store is
+ *  absent or rejected; every fallback-worthy condition is logged at W3.
+ *
+ * @param config validation context
+ * @return opened store, or null when the warp path must be used
+ */
+std::unique_ptr<mnstore::Store>
+openMetanodeStore(const MetanodeStoreConfig &config);
+
+/** Checks whether the legacy warp metatile path has its min/max inputs.
+ *
+ * @param demDataset path to the normal DEM dataset link
+ * @return true when both dem.min and dem.max can be opened
+ */
+bool legacyDemMetatileInputsAvailable(const std::string &demDataset);
 
 vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
                               , Arsenal &arsenal
@@ -93,6 +129,7 @@ vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
  * @param resource resource being served
  * @param tileIndex paired delivery flag index
  * @param geoidGrid SDS vertical datum geoid grid (resource setting)
+ * @param displaySize optional geodata display-size override
  * @param overrides credits/texture overrides
  * @return assembled metatile or boost::none
  */
@@ -102,6 +139,7 @@ metatileFromStore(const vts::TileId &tileId
                   , const Resource &resource
                   , const mmapped::TileIndex &tileIndex
                   , const boost::optional<std::string> &geoidGrid
+                  , const boost::optional<int> &displaySize = boost::none
                   , const MetatileOverrides &overrides = {});
 
 // inines

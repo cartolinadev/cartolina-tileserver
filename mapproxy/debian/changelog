@@ -1,3 +1,13 @@
+cartolina-tileserver (1.116metanodestore) testing; urgency=medium
+
+  * metanode store hardening: store is now used in tiled geodata generators,
+    lod expansion is not permitted for store-backed DEM datasets (in the 
+    previous release, it silently failed over to warp path, which required
+    presence other dem.min, dem.max directories and failed hard
+    if they were missing.
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 13 Jun 2026 13:59:23 +0200
+
 cartolina-tileserver (1.115metanodestore) testing; urgency=medium
 
   * RFC 7 metanode store: precomputed metatiles served without the

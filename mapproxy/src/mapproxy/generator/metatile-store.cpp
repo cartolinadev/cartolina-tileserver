@@ -336,6 +336,7 @@ metatileFromStore(const vts::TileId &tileId
                   , const Resource &resource
                   , const mmapped::TileIndex &tileIndex
                   , const boost::optional<std::string> &geoidGrid
+                  , const boost::optional<int> &displaySize
                   , const MetatileOverrides &overrides)
 {
     auto blocks(metatileBlocks(resource, tileId));
@@ -495,7 +496,7 @@ metatileFromStore(const vts::TileId &tileId
                 if (geometry || navtile) {
                     // real tile: needs stored payload
                     if (!havePage) {
-                        LOG(info2)
+                        LOG(warn3)
                             << "Metanode store has no page for metatile "
                             << tileId << " with real tiles; falling "
                             "back to warp.";
@@ -503,7 +504,7 @@ metatileFromStore(const vts::TileId &tileId
                     }
                     const auto &data(page.node(nodeId));
                     if (!data) {
-                        LOG(warn2)
+                        LOG(warn3)
                             << "Metanode store page " << page.root()
                             << " has no payload for real tile "
                             << nodeId << "; falling back to warp.";
@@ -551,26 +552,33 @@ metatileFromStore(const vts::TileId &tileId
                     if (geometry) {
                         node.updateCredits(credits);
                         node.internalTextureCount(internalTextureCount);
-                        node.applyTexelSize(true);
 
-                        // calibrated relief-corrected analytic texel
-                        // size (RFC 7 section 5)
-                        const auto area(cellArea(i, j));
-                        const auto edge(std::sqrt(area));
-                        const auto relief(maxZ - minZ);
-                        /* Real terrain relief stays well below the
-                         * tile edge; larger ratios only arise from
-                         * data defects (nodata sentinels leaking into
-                         * the source as valid values). Clamp so a
-                         * poisoned range cannot blow up LOD selection.
-                         */
-                        const auto reliefRatio
-                            (std::min(edge > 0.0 ? relief / edge : 0.0
-                                      , 2.0));
-                        node.texelSize
-                            = std::sqrt(area / vr::BoundLayer::tileArea())
-                            * std::sqrt(1.0 + texelReliefCoefficient
-                                        * reliefRatio * reliefRatio);
+                        if (displaySize) {
+                            node.applyDisplaySize(true);
+                            node.displaySize = *displaySize;
+                        } else {
+                            node.applyTexelSize(true);
+
+                            // calibrated relief-corrected analytic texel
+                            // size (RFC 7 section 5)
+                            const auto area(cellArea(i, j));
+                            const auto edge(std::sqrt(area));
+                            const auto relief(maxZ - minZ);
+                            /* Real terrain relief stays well below the
+                             * tile edge; larger ratios only arise from
+                             * data defects (nodata sentinels leaking into
+                             * the source as valid values). Clamp so a
+                             * poisoned range cannot blow up LOD selection.
+                             */
+                            const auto reliefRatio
+                                (std::min(edge > 0.0 ? relief / edge : 0.0
+                                          , 2.0));
+                            node.texelSize
+                                = std::sqrt(area
+                                            / vr::BoundLayer::tileArea())
+                                * std::sqrt(1.0 + texelReliefCoefficient
+                                            * reliefRatio * reliefRatio);
+                        }
                     }
                 }
 
@@ -579,7 +587,7 @@ metatileFromStore(const vts::TileId &tileId
         }
 
         } catch (const std::exception &e) {
-            LOG(warn2)
+            LOG(warn3)
                 << "Metanode store: cannot derive block fields for "
                 << tileId << ": <" << e.what()
                 << ">; falling back to warp.";

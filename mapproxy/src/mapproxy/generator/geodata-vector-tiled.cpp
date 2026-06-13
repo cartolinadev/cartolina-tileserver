@@ -24,6 +24,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <fstream>
+#include <stdexcept>
+
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/replace.hpp>
 
@@ -87,6 +90,7 @@ GeodataVectorTiled::GeodataVectorTiled(const Params &params)
     , tileFile_(definition_.dataset)
     , physicalSrs_
       (vr::system.srs(resource().referenceFrame->model.physicalSrs))
+    , warpFallbackAvailable_(false)
 {
     {
         // open dataset and get descriptor + metadata
@@ -156,6 +160,10 @@ GeodataVectorTiled::GeodataVectorTiled(const Params &params)
             // load delivery index
             index_ = boost::in_place(referenceFrame().metaBinaryOrder
                                      , deliveryIndexPath);
+            openMetanodeStore();
+            if (!store_ && !warpFallbackAvailable_) {
+                return;
+            }
             makeReady();
             return;
         }
@@ -174,16 +182,21 @@ void GeodataVectorTiled::prepare_impl(Arsenal&)
 
     // try to open datasets
     geo::GeoDataset::open(dem_.dataset);
-    geo::GeoDataset::open(dem_.dataset + ".min");
-    geo::GeoDataset::open(dem_.dataset + ".max");
 
     // prepare tile index
     {
+        const auto tilingPath
+            (absoluteDataset(definition_.dem.dataset)
+             + "/tiling." + r.id.referenceFrame);
+        const auto storePath
+            (fs::path(absoluteDataset(definition_.dem.dataset))
+             / ("metanodes." + r.id.referenceFrame));
+
         vts::tileset::Index index(referenceFrame().metaBinaryOrder);
-        prepareTileIndex(index
-                         , (absoluteDataset(definition_.dem.dataset)
-                            + "/tiling." + r.id.referenceFrame)
-                         , r);
+        prepareTileIndex(index, tilingPath, r, false, MaskTree()
+                         , fs::exists(storePath)
+                         ? TileIndexExpansion::reject
+                         : TileIndexExpansion::allow);
 
         // save it all
         vts::tileset::saveTileSetIndex(index, root() / "tileset.index");
@@ -195,9 +208,19 @@ void GeodataVectorTiled::prepare_impl(Arsenal&)
         mmapped::TileIndex::write(tmpPath, index.tileIndex);
         fs::rename(tmpPath, deliveryIndexPath);
 
+        {
+            std::ofstream source
+                ((root() / "delivery.index.src").string()
+                 , std::ostream::out | std::ostream::trunc);
+            source << mnstore::fileDigest(tilingPath) << "\n";
+        }
+
         index_ = boost::in_place(referenceFrame().metaBinaryOrder
                                  , deliveryIndexPath);
     }
+
+    openMetanodeStore();
+    checkMetatileSource();
 }
 
 vr::FreeLayer GeodataVectorTiled::freeLayer_impl(ResourceRoot root) const
@@ -286,6 +309,25 @@ void GeodataVectorTiled::generateMetatile(Sink &sink
         return;
     }
 
+    if (store_) {
+        if (auto metatile = metatileFromStore
+            (fi.tileId, *store_, resource(), index_->tileIndex
+             , dem_.geoidGrid, definition_.displaySize))
+        {
+            std::ostringstream os;
+            metatile->save(os);
+            sink.content(os.str(), fi.sinkFileInfo());
+            return;
+        }
+
+        LOG(warn3)
+            << "Generator for <" << id()
+            << ">: metanode store could not serve geodata metatile "
+            << fi.tileId << "; falling back to warp.";
+    }
+
+    checkMetatileSource();
+
     auto metatile(metatileFromDem
                   (fi.tileId, sink, arsenal, resource()
                    , index_->tileIndex, dem_.dataset
@@ -296,6 +338,36 @@ void GeodataVectorTiled::generateMetatile(Sink &sink
     std::ostringstream os;
     metatile.save(os);
     sink.content(os.str(), fi.sinkFileInfo());
+}
+
+void GeodataVectorTiled::openMetanodeStore()
+{
+    store_.reset();
+    warpFallbackAvailable_ = legacyDemMetatileInputsAvailable(dem_.dataset);
+
+    MetanodeStoreConfig storeConfig;
+    storeConfig.id = id().fullId();
+    storeConfig.datasetDir = absoluteDataset(definition_.dem.dataset);
+    storeConfig.root = root();
+    storeConfig.referenceFrame = resource().id.referenceFrame;
+    storeConfig.metaBinaryOrder = referenceFrame().metaBinaryOrder;
+    storeConfig.metaDepth = 1;
+    storeConfig.geoidGrid = dem_.geoidGrid;
+    storeConfig.heightFunction = std::string();
+    storeConfig.hasMask = false;
+    storeConfig.lodRange = resource().lodRange;
+
+    store_ = ::openMetanodeStore(storeConfig);
+}
+
+void GeodataVectorTiled::checkMetatileSource() const
+{
+    if (store_ || warpFallbackAvailable_) { return; }
+
+    LOGTHROW(err2, std::runtime_error)
+        << "Generator for <" << id()
+        << ">: no valid metanode store and legacy dem.min/dem.max "
+        "pyramids are not available; cannot serve geodata metatiles.";
 }
 
 void GeodataVectorTiled::generateGeodata(Sink &sink

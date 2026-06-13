@@ -24,7 +24,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <fstream>
+#include <stdexcept>
+
+#include <boost/filesystem.hpp>
+
 #include "utility/raise.hpp"
+
+#include "geo/geodataset.hpp"
 
 #include "../support/metatile.hpp"
 #include "../support/geo.hpp"
@@ -33,6 +40,8 @@
 #include "../support/mesh.hpp"
 
 #include "metatile.hpp"
+
+namespace fs = boost::filesystem;
 
 namespace {
 
@@ -479,6 +488,122 @@ metatileFromDemImpl(const vts::TileId &tileId, Sink &sink, Arsenal &arsenal
 }
 
 } // namespace
+
+std::unique_ptr<mnstore::Store>
+openMetanodeStore(const MetanodeStoreConfig &config)
+{
+    const fs::path storePath
+        (config.datasetDir / ("metanodes." + config.referenceFrame));
+    const fs::path tilingPath
+        (config.datasetDir / ("tiling." + config.referenceFrame));
+
+    if (!fs::exists(storePath)) {
+        LOG(warn3)
+            << "Generator for <" << config.id << ">: no metanode store at "
+            << storePath << "; metatiles use the warp path.";
+        return {};
+    }
+
+    try {
+        auto store(std::make_unique<mnstore::Store>(storePath));
+        const auto &header(store->header());
+
+        auto reject([&](const std::string &what) {
+            LOGTHROW(err2, std::runtime_error)
+                << "Metanode store " << storePath << ": " << what;
+        });
+
+        if (header.referenceFrame != config.referenceFrame) {
+            reject("reference frame mismatch (store: "
+                   + header.referenceFrame + ").");
+        }
+
+        if ((header.metaBinaryOrder != config.metaBinaryOrder)
+            || (header.metaDepth != config.metaDepth))
+        {
+            reject("metatile packaging mismatch.");
+        }
+
+        const auto geoidGrid(config.geoidGrid ? *config.geoidGrid
+                             : std::string());
+        if (header.geoidGrid != geoidGrid) {
+            reject("geoid grid mismatch (store: '"
+                   + header.geoidGrid + "', resource: '"
+                   + geoidGrid + "').");
+        }
+
+        if (header.heightFunction != config.heightFunction) {
+            reject("height function mismatch.");
+        }
+
+        if (config.hasMask) {
+            reject("resource uses a mask tree; not supported by the "
+                   "store path.");
+        }
+
+        {
+            vts::TileIndex sourceIndex;
+            sourceIndex.load(tilingPath);
+            if (!config.lodRange.empty()
+                && (config.lodRange.max > sourceIndex.maxLod()))
+            {
+                std::ostringstream os;
+                os << "configured max LOD " << config.lodRange.max
+                   << " exceeds paired tiling max LOD "
+                   << sourceIndex.maxLod()
+                   << ". Runtime LOD expansion is not supported for "
+                   "metanode-store-backed datasets; rerun "
+                   "mapproxy-tiling for the requested LOD range.";
+                reject(os.str());
+            }
+        }
+
+        const auto pairing(mnstore::fileDigest(tilingPath));
+        if (header.pairing != pairing) {
+            reject("pairing mismatch with flag tile index (store: "
+                   + header.pairing + ", index: " + pairing + ").");
+        }
+
+        {
+            const auto sourcePath(config.root / "delivery.index.src");
+            std::string derivedFrom;
+            if (fs::exists(sourcePath)) {
+                std::ifstream source(sourcePath.string());
+                source >> derivedFrom;
+            }
+            if (derivedFrom != pairing) {
+                reject("delivery index is not derived from the paired "
+                       "flag tile index; re-prepare the resource "
+                       "(bump its revision or clear its cache).");
+            }
+        }
+
+        LOG(info3)
+            << "Generator for <" << config.id << ">: serving metatiles "
+            "from metanode store " << storePath << " ("
+            << store->pageCount() << " pages, pairing "
+            << header.pairing << ").";
+
+        return store;
+    } catch (const std::exception &e) {
+        LOG(warn3)
+            << "Generator for <" << config.id << ">: ignoring metanode "
+            "store: " << e.what() << " Metatiles use the warp path.";
+    }
+
+    return {};
+}
+
+bool legacyDemMetatileInputsAvailable(const std::string &demDataset)
+{
+    try {
+        geo::GeoDataset::open(demDataset + ".min");
+        geo::GeoDataset::open(demDataset + ".max");
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
 
 vts::MetaTile
 metatileFromDem(const vts::TileId &tileId, Sink &sink, Arsenal &arsenal

@@ -27,13 +27,16 @@
 #include "metatile.hpp"
 #include "tileindex.hpp"
 
+#include <stdexcept>
+
 typedef vts::TileIndex::Flag TiFlag;
 
 void prepareTileIndex(vts::TileIndex &index
                       , const boost::filesystem::path *tilesPath
                       , const Resource &resource
                       , bool navtiles
-                      , const MaskTree &maskTree)
+                      , const MaskTree &maskTree
+                      , TileIndexExpansion expansion)
 {
     // grab and reset tile index
     auto &ti(index);
@@ -86,6 +89,17 @@ void prepareTileIndex(vts::TileIndex &index
         datasetTiles.load(*tilesPath);
 
         if (resource.lodRange.max > datasetTiles.maxLod()) {
+            if (expansion == TileIndexExpansion::reject) {
+                LOGTHROW(err2, std::runtime_error)
+                    << "Resource <" << resource.id << "> requests max LOD "
+                    << resource.lodRange.max << " but paired tiling "
+                    << *tilesPath << " ends at LOD "
+                    << datasetTiles.maxLod()
+                    << ". Runtime LOD expansion is not supported for "
+                    "metanode-store-backed datasets; rerun "
+                    "mapproxy-tiling for the requested LOD range.";
+            }
+
             LOG(debug) << "Loaded tiling is too shallow ("
                        << datasetTiles.maxLod() << " vs "
                        << resource.lodRange.max << "); enlarging.";

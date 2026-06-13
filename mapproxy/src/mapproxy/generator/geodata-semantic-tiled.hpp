@@ -27,7 +27,10 @@
 #ifndef mapproxy_generator_geodata_semantic_hpp_included_
 #define mapproxy_generator_geodata_semantic_hpp_included_
 
+#include <memory>
+
 #include "../support/mmapped/tilesetindex.hpp"
+#include "../support/mnstore.hpp"
 
 #include "../heightfunction.hpp"
 #include "../generator.hpp"
@@ -65,6 +68,9 @@ private:
     void generateMetatile(Sink &sink, const GeodataFileInfo &fi
                           , Arsenal &arsenal) const;
 
+    void openMetanodeStore();
+    void checkMetatileSource() const;
+
     Definition definition_;
 
     /** Path to /dem dataset
@@ -88,6 +94,8 @@ private:
     geo::vectorformat::GeodataConfig geodataConfig_;
 
     boost::optional<mmapped::Index> index_;
+    std::unique_ptr<mnstore::Store> store_;
+    bool warpFallbackAvailable_;
 
     /** Generator metadata.
      */

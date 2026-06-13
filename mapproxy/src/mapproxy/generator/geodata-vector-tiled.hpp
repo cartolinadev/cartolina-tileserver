@@ -27,6 +27,8 @@
 #ifndef mapproxy_generator_geodata_vector_tiled_hpp_included_
 #define mapproxy_generator_geodata_vector_tiled_hpp_included_
 
+#include <memory>
+
 #include <boost/optional.hpp>
 
 #include "geo/geodataset.hpp"
@@ -34,6 +36,7 @@
 #include "vts-libs/vts/urltemplate.hpp"
 
 #include "../support/mmapped/tilesetindex.hpp"
+#include "../support/mnstore.hpp"
 #include "geodatavectorbase.hpp"
 
 namespace generator {
@@ -58,6 +61,9 @@ private:
                                  , const GeodataFileInfo &fileInfo
                                  , Arsenal &arsenal) const;
 
+    void openMetanodeStore();
+    void checkMetatileSource() const;
+
     Definition definition_;
 
     /** Path to /dem dataset
@@ -73,6 +79,8 @@ private:
     const vr::Srs &physicalSrs_;
 
     boost::optional<mmapped::Index> index_;
+    std::unique_ptr<mnstore::Store> store_;
+    bool warpFallbackAvailable_;
 };
 
 } // namespace generator

@@ -89,6 +89,11 @@ private:
      */
     void openMetanodeStore();
 
+    /** Throws when neither store nor legacy warp inputs can serve
+     *  metatiles.
+     */
+    void checkMetatileSource() const;
+
     virtual unsigned int generatorRevision() const;
 
     const Definition &definition_;
@@ -110,6 +115,8 @@ private:
      *  precomputed payload instead of the serve-time DEM warp.
      */
     std::unique_ptr<mnstore::Store> store_;
+
+    bool warpFallbackAvailable_;
 };
 
 } // namespace generator

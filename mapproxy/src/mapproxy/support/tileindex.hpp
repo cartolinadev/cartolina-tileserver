@@ -27,6 +27,8 @@
 #ifndef mapproxy_support_tileindex_hpp_included_
 #define mapproxy_support_tileindex_hpp_included_
 
+#include <boost/filesystem.hpp>
+
 #include "vts-libs/vts/tileindex.hpp"
 #include "vts-libs/vts/tileset/tilesetindex.hpp"
 
@@ -35,17 +37,26 @@
 
 namespace vts = vtslibs::vts;
 
+enum class TileIndexExpansion {
+    allow
+    , reject
+};
+
 void prepareTileIndex(vts::TileIndex &index
                       , const boost::filesystem::path *tilesPath
                       , const Resource &resource
                       , bool navtiles = false
-                      , const MaskTree &maskTree = MaskTree());
+                      , const MaskTree &maskTree = MaskTree()
+                      , TileIndexExpansion expansion
+                      = TileIndexExpansion::allow);
 
 void prepareTileIndex(vts::TileIndex &index
                       , const boost::filesystem::path &tilesPath
                       , const Resource &resource
                       , bool navtiles = false
-                      , const MaskTree &maskTree = MaskTree());
+                      , const MaskTree &maskTree = MaskTree()
+                      , TileIndexExpansion expansion
+                      = TileIndexExpansion::allow);
 
 void prepareTileIndex(vts::TileIndex &index
                       , const Resource &resource
@@ -56,7 +67,9 @@ void prepareTileIndex(vts::tileset::Index &index
                       , const boost::filesystem::path &tilesPath
                       , const Resource &resource
                       , bool navtiles = false
-                      , const MaskTree &maskTree = MaskTree());
+                      , const MaskTree &maskTree = MaskTree()
+                      , TileIndexExpansion expansion
+                      = TileIndexExpansion::allow);
 
 // inlines
 
@@ -64,18 +77,22 @@ inline void prepareTileIndex(vts::tileset::Index &index
                              , const boost::filesystem::path &tilesPath
                              , const Resource &resource
                              , bool navtiles
-                             , const MaskTree &maskTree)
+                             , const MaskTree &maskTree
+                             , TileIndexExpansion expansion)
 {
-    prepareTileIndex(index.tileIndex, tilesPath, resource, navtiles, maskTree);
+    prepareTileIndex(index.tileIndex, tilesPath, resource, navtiles, maskTree
+                     , expansion);
 }
 
 inline void prepareTileIndex(vts::TileIndex &index
                              , const boost::filesystem::path &tilesPath
                              , const Resource &resource
                              , bool navtiles
-                             , const MaskTree &maskTree)
+                             , const MaskTree &maskTree
+                             , TileIndexExpansion expansion)
 {
-    return prepareTileIndex(index, &tilesPath, resource, navtiles, maskTree);
+    return prepareTileIndex(index, &tilesPath, resource, navtiles, maskTree
+                            , expansion);
 }
 
 inline void prepareTileIndex(vts::TileIndex &index
