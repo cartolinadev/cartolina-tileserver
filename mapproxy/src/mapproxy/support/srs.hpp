@@ -57,8 +57,20 @@ vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
                          , const boost::optional<std::string> &geoidGrid
                          = boost::none);
 
+/** Checks that a geoid grid is loadable by PROJ/GDAL, throwing with a
+ *  helpful message if it is not. No-op when no grid is set.
+ *
+ *  The geoid grid string is fed to PROJ as a vertical-datum grid; the
+ *  serve and warp paths convert heights through it. A grid PROJ cannot
+ *  read (notably the VTS registry JPEG geoid grids under geoidgrid, read
+ *  only by the VTS C++ stack) builds a metanode store that fails every
+ *  metatile with a 500. Call this at tiling/setup time so such a grid
+ *  fails fast instead of baking a broken store.
+ */
+void validateGeoidGrid(const boost::optional<std::string> &geoidGrid);
 
-/* This class implements a space-depdendent coordinate system transformation, 
+
+/* This class implements a space-depdendent coordinate system transformation,
  * intended for usage as a template argument of geo::normalmap::convertNormals. 
  * 
  * This is a functor returning a 3x3 linear transform matrix, which

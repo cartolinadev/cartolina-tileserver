@@ -28,6 +28,8 @@
 #include "geometry/meshop.hpp"
 #include "imgproc/scanconversion.hpp"
 #include "geo/coordinates.hpp"
+#include "geo/csconvertor.hpp"
+#include "geo/srsdef.hpp"
 
 #include "vts-libs/vts/math.hpp"
 #include "vts-libs/vts/csconvertor.hpp"
@@ -359,6 +361,31 @@ vts::CsConvertor phys2sds(const vts::NodeInfo &nodeInfo
 {
     return vts::CsConvertor(nodeInfo.referenceFrame().model.physicalSrs
                             , sds(nodeInfo, geoidGrid));
+}
+
+void validateGeoidGrid(const boost::optional<std::string> &geoidGrid)
+{
+    if (!geoidGrid || geoidGrid->empty()) { return; }
+
+    // Reproduce the serve/warp conversion: applying the geoid to a
+    // geographic SRS and transforming one point forces PROJ to build
+    // and run the vertical (vgridshift) pipeline, which loads the grid.
+    // Grid resolution is a property of PROJ and the grid string, not of
+    // any particular base SRS, so a generic WGS84 base suffices.
+    const geo::SrsDefinition wgs84("+proj=longlat +datum=WGS84 +no_defs");
+    try {
+        const geo::CsConvertor conv
+            (geo::setGeoid(wgs84, *geoidGrid), wgs84);
+        conv(math::Point3(0.0, 0.0, 0.0));
+    } catch (const std::exception &e) {
+        LOGTHROW(err3, std::runtime_error)
+            << "Geoid grid '" << *geoidGrid << "' is not loadable by "
+            "PROJ/GDAL (" << e.what() << "). Use a PROJ-readable grid such "
+            "as 'egm96_15.gtx'; the VTS registry geoid grids (the "
+            "geoidgrid/*.jpg files) are read only by the VTS C++ stack, "
+            "not by PROJ, and would build a metanode store that fails to "
+            "serve every metatile with a 500.";
+    }
 }
 
 std::array<math::Point3, 4>

@@ -68,6 +68,7 @@
 #include "mapproxy/resource.hpp"
 #include "mapproxy/definition.hpp"
 #include "mapproxy/mapproxy.hpp"
+#include "mapproxy/support/srs.hpp"
 
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
@@ -187,7 +188,10 @@ void SetupResource::configuration(po::options_description &cmdline
         ("tin.geoidGrid", po::value<std::string>()
          , "TIN: Geoid grid to inject into dataset's SRS. Defaults to "
          "reference frame's body default geoid grid. Use empty string "
-         "to disable geoid grid at all.")
+         "to disable geoid grid at all. Must be a PROJ-readable grid "
+         "(e.g. 'egm96_15.gtx'); validated at startup, so an unreadable "
+         "grid (such as the VTS registry .jpg geoid grids) aborts "
+         "instead of building an unservable store.")
 
         ("tms.format", po::value(&config_.format)
          ->default_value(config_.format)->required()
@@ -829,6 +833,10 @@ int SetupResource::run()
         // no geoid grid
         config.geoidGrid = boost::none;
     }
+
+    // Fail fast on a geoid grid PROJ cannot read, before building any
+    // tiling artifacts that would fail to serve.
+    validateGeoidGrid(config.geoidGrid);
 
     // open dataset
     const auto ds(geo::GeoDataset::open(dataset_));

@@ -56,6 +56,7 @@
 #include "jsoncpp/io.hpp"
 
 #include "mapproxy/support/mnstore.hpp"
+#include "mapproxy/support/srs.hpp"
 #include "mapproxy/heightfunction.hpp"
 
 #include "./tiling.hpp"
@@ -246,7 +247,13 @@ void Tiling::configuration(po::options_description &cmdline
         ("geoidGrid", po::value<std::string>()
          , "Geoid grid of the SDS vertical datum (resource geoidGrid "
          "setting); stored heights are converted to the raw SDS "
-         "vertical, matching the serve path.")
+         "vertical, matching the serve path. Must be a PROJ-readable "
+         "grid (e.g. 'egm96_15.gtx'); validated at startup, so an "
+         "unreadable grid (such as the VTS registry .jpg geoid grids) "
+         "aborts the run instead of baking an unservable store. "
+         "Omit to use the reference frame body's default geoid; pass "
+         "an empty string for a source that is already ellipsoidal "
+         "(no geoid).")
         ("heightFunction", po::value<fs::path>()
          , "Path to a JSON file with a {\"heightFunction\": ...} "
          "definition baked into stored heights (resource setting).")
@@ -376,6 +383,26 @@ bool Tiling::help(std::ostream &out, const std::string &what) const
 int Tiling::runImpl()
 {
     auto rf(vr::system.referenceFrames(referenceFrame_));
+
+    // Resolve the geoid grid the same way as mapproxy-setup-resource:
+    // an explicit value wins, an explicit empty string means "no geoid",
+    // and an omitted grid falls back to the reference frame body default.
+    if (!unifiedConfig_.geoidGrid) {
+        if (rf.body) {
+            unifiedConfig_.geoidGrid
+                = vr::system.bodies(*rf.body).defaultGeoidGrid;
+        }
+    } else if (unifiedConfig_.geoidGrid->empty()) {
+        unifiedConfig_.geoidGrid = boost::none;
+    }
+
+    // Fail fast on a geoid grid PROJ cannot read, rather than baking a
+    // store that fails every metatile at serve time.
+    validateGeoidGrid(unifiedConfig_.geoidGrid);
+    if (unifiedConfig_.geoidGrid) {
+        LOG(info3, log_) << "Using geoid grid '"
+                         << *unifiedConfig_.geoidGrid << "'.";
+    }
 
     auto ds(geo::GeoDataset::open(dataset_));
 
