@@ -1,3 +1,9 @@
+cartolina-tileserver (1.118metanodestore) testing; urgency=medium
+
+  * mapproxy-tiling: correct use the new unified approach for imagery (the "ophoto" path)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 13 Jun 2026 19:52:43 +0200
+
 cartolina-tileserver (1.117metanodestore) testing; urgency=medium
 
   * mapproxy-calipers: --gsd option

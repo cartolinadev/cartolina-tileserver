@@ -370,7 +370,17 @@ int Tiling::runImpl()
 
     auto ds(geo::GeoDataset::open(dataset_));
 
-    if (!legacy_) { return runUnified(rf); }
+    if (!legacy_) {
+        // Route by dataset type, using the same DEM criterion as
+        // calipers (single band, non-byte data type). A DEM gets the
+        // full unified pass with the metanode store; any other raster
+        // (imagery) gets the store-less coverage variant — existence
+        // and watertightness from the mask band, no heights.
+        const auto desc(ds.descriptor());
+        unifiedConfig_.coverage
+            = !((desc.bands == 1) && (desc.dataType != GDT_Byte));
+        return runUnified(rf);
+    }
 
     auto ti(tiling::generate(dataset_, rf, lodRange_
                              , asLodTileRangeList(lodRange_.min, tileRanges_)
@@ -395,9 +405,14 @@ int Tiling::runUnified(const vr::ReferenceFrame &rf)
     auto result(tiling::generateUnified
                 (dataset_, rf, lodRange_, tileRanges, unifiedConfig_));
 
-    tiling::publishUnified(result, unifiedConfig_, referenceFrame_
-                           , lodRange_, tileRanges, output_
-                           , storeOutput_);
+    if (unifiedConfig_.coverage) {
+        // imagery: flag tile index only, no metanode store
+        tiling::publishUnifiedIndex(result, output_);
+    } else {
+        tiling::publishUnified(result, unifiedConfig_, referenceFrame_
+                               , lodRange_, tileRanges, output_
+                               , storeOutput_);
+    }
 
     LOG(info4) << "Done.";
 

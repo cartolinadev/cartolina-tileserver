@@ -619,10 +619,14 @@ void UnifiedPass::prepareNode
         return os.str();
     });
 
-    job.elevMin = pass(dataset_, GDT_Float32, ElevationNodata, "min"
-                       , name("elevation min"));
-    job.elevMax = pass(dataset_, GDT_Float32, ElevationNodata, "max"
-                       , name("elevation max"));
+    // coverage (imagery) mode needs only the mask passes; skip the
+    // DEM elevation passes and the store they feed
+    if (!config_.coverage) {
+        job.elevMin = pass(dataset_, GDT_Float32, ElevationNodata, "min"
+                           , name("elevation min"));
+        job.elevMax = pass(dataset_, GDT_Float32, ElevationNodata, "max"
+                           , name("elevation max"));
+    }
     job.maskMin = pass(maskVrt_.path(), GDT_Byte, boost::none, "min"
                        , name("mask min"));
     job.maskMax = pass(maskVrt_.path(), GDT_Byte, boost::none, "max"
@@ -638,8 +642,11 @@ void UnifiedPass::reduceNode(NodeJob &job)
 
     const auto maskMin(job.maskMin.get());
     const auto maskMax(job.maskMax.get());
-    const auto elevMin(job.elevMin.get());
-    const auto elevMax(job.elevMax.get());
+    cv::Mat elevMin, elevMax;
+    if (!config_.coverage) {
+        elevMin = job.elevMin.get();
+        elevMax = job.elevMax.get();
+    }
 
     LOG(info3)
         << "Unified pass: reducing division node " << node.id << ".";
@@ -658,26 +665,29 @@ void UnifiedPass::reduceNode(NodeJob &job)
 
                 if (!maskMax.at<std::uint8_t>(j, i)) { continue; }
 
-                const double vMin(elevMin.at<float>(j, i));
-                const double vMax(elevMax.at<float>(j, i));
-                if ((vMin < ElevationValidLimit)
-                    || (vMax < ElevationValidLimit))
-                {
-                    // mask claims data but elevation reduced nothing;
-                    // treat as nonexistent
-                    ++holes;
-                    continue;
+                if (!config_.coverage) {
+                    const double vMin(elevMin.at<float>(j, i));
+                    const double vMax(elevMax.at<float>(j, i));
+                    if ((vMin < ElevationValidLimit)
+                        || (vMax < ElevationValidLimit))
+                    {
+                        // mask claims data but elevation reduced nothing;
+                        // treat as nonexistent
+                        ++holes;
+                        continue;
+                    }
+
+                    const auto range(transform(vMin, vMax));
+                    leaf.minZ.at<float>(j, i) = range.first;
+                    leaf.maxZ.at<float>(j, i) = range.second;
                 }
 
+                // coverage mode: existence is the mask alone
                 leaf.exists.at<std::uint8_t>(j, i) = 1;
                 const bool watertight
                     (config_.forceWatertight
                      || (maskMin.at<std::uint8_t>(j, i) == 255));
                 leaf.watertight.at<std::uint8_t>(j, i) = watertight;
-
-                const auto range(transform(vMin, vMax));
-                leaf.minZ.at<float>(j, i) = range.first;
-                leaf.maxZ.at<float>(j, i) = range.second;
                 ++cells;
             }
         }
@@ -799,26 +809,31 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
             if (grid.watertight.at<std::uint8_t>(j, i)) {
                 flags |= TiFlag::watertight;
             }
-            if (navtileEligible(i, j)) {
+            // navtile is a surface (DEM) concept; imagery has none, so
+            // coverage mode never sets it
+            if (!config_.coverage && navtileEligible(i, j)) {
                 flags |= TiFlag::navtile;
             }
             tileIndex_.set(tileId, flags);
 
-            // store page payload
-            const auto pageId(storeHeader_.pageId(tileId));
-            auto ipages(pages_.find(pageId));
-            if (ipages == pages_.end()) {
-                ipages = pages_.insert
-                    ({ pageId, mnstore::Page(storeHeader_, pageId) })
-                    .first;
+            // coverage mode emits the flag index only, no store
+            if (!config_.coverage) {
+                // store page payload
+                const auto pageId(storeHeader_.pageId(tileId));
+                auto ipages(pages_.find(pageId));
+                if (ipages == pages_.end()) {
+                    ipages = pages_.insert
+                        ({ pageId, mnstore::Page(storeHeader_, pageId) })
+                        .first;
+                }
+                auto &nodeData(ipages->second.node(tileId));
+                nodeData.flags = mnstore::NodeData::mesh;
+                if (grid.watertight.at<std::uint8_t>(j, i)) {
+                    nodeData.flags |= mnstore::NodeData::watertight;
+                }
+                nodeData.heightRange(grid.minZ.at<float>(j, i)
+                                     , grid.maxZ.at<float>(j, i));
             }
-            auto &nodeData(ipages->second.node(tileId));
-            nodeData.flags = mnstore::NodeData::mesh;
-            if (grid.watertight.at<std::uint8_t>(j, i)) {
-                nodeData.flags |= mnstore::NodeData::watertight;
-            }
-            nodeData.heightRange(grid.minZ.at<float>(j, i)
-                                 , grid.maxZ.at<float>(j, i));
             ++emitted;
         }
     }
@@ -920,6 +935,23 @@ void publishUnified(const UnifiedResult &result
         << "Tile index " << tileIndexPath << " and metanode store "
         << storePath << " published (pairing " << header.pairing
         << ").";
+}
+
+void publishUnifiedIndex(const UnifiedResult &result
+                         , const fs::path &tileIndexPath)
+{
+    // staged write: temp name, fsync, rename, fsync directory
+    const auto tiTmp(utility::addExtension(tileIndexPath, ".tmp"));
+    LOG(info3) << "Saving tile index into staged " << tiTmp << ".";
+    result.tileIndex.save(tiTmp);
+
+    fsyncPath(tiTmp);
+    fs::rename(tiTmp, tileIndexPath);
+    fsyncPath(tileIndexPath.parent_path());
+
+    LOG(info3)
+        << "Tile index " << tileIndexPath
+        << " published (coverage, no metanode store).";
 }
 
 } // namespace tiling

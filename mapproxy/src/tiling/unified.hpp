@@ -78,6 +78,14 @@ struct UnifiedConfig {
      */
     bool forceWatertight = false;
 
+    /** Coverage (mask-only) mode for non-DEM datasets (imagery): runs
+     *  only the two mask filter passes to derive existence and
+     *  watertightness, skips the elevation passes and the metanode
+     *  store entirely. The pass emits the flag tile index alone, which
+     *  is published with publishUnifiedIndex.
+     */
+    bool coverage = false;
+
     /** Maximum concurrent filter-pass warps across all division
      *  nodes. The work is source-read/decompress bound, so the only
      *  hard ceiling is the storage's sustainable stream count; each
@@ -133,6 +141,16 @@ void publishUnified(const UnifiedResult &result
                     , const vtslibs::vts::LodTileRange::list &tileRanges
                     , const boost::filesystem::path &tileIndexPath
                     , const boost::filesystem::path &storePath);
+
+/** Atomically publishes the coverage-mode flag tile index alone (no
+ *  metanode store): writes to a temporary name, fsyncs and renames into
+ *  place. Used for imagery, where heights are not stored.
+ *
+ * @param result unified pass output (only the tile index is used)
+ * @param tileIndexPath final flag tile index path
+ */
+void publishUnifiedIndex(const UnifiedResult &result
+                         , const boost::filesystem::path &tileIndexPath);
 
 } // namespace tiling
 

@@ -948,17 +948,17 @@ int SetupResource::run()
 
     // 7) generate tiling information
     LOG(info4) << "Generating tiling information.";
-    if (config.legacyTiling
-        || (cm.datasetType != calipers::DatasetType::dem))
-    {
+    const auto tilingPath(rootDir / ("tiling." + resourceId_.referenceFrame));
+    if (config.legacyTiling) {
+        // legacy per-tile per-LOD warp analysis (DEM and imagery)
         LogLinePrefix linePrefix(" (tiling)");
         tiling::Config tilingConfig;
         tilingConfig.parallel = config_.parallel;
         auto ti(tiling::generate(mainDataset, *rf, cm.lodRange
                                  , cm.lodTileRanges(), tilingConfig));
 
-        ti.save(rootDir / ("tiling." + resourceId_.referenceFrame));
-    } else {
+        ti.save(tilingPath);
+    } else if (cm.datasetType == calipers::DatasetType::dem) {
         // RFC 7 metanode-store mode: unified pass emitting the paired
         // flag tile index and metanode store
         LogLinePrefix linePrefix(" (tiling)");
@@ -974,8 +974,22 @@ int SetupResource::run()
         tiling::publishUnified
             (result, unifiedConfig, resourceId_.referenceFrame
              , cm.lodRange, cm.lodTileRanges()
-             , rootDir / ("tiling." + resourceId_.referenceFrame)
+             , tilingPath
              , rootDir / ("metanodes." + resourceId_.referenceFrame));
+    } else {
+        // RFC 7 coverage mode: unified mask pass for imagery, emitting
+        // the flag tile index only (no metanode store)
+        LogLinePrefix linePrefix(" (tiling)");
+        tiling::UnifiedConfig unifiedConfig;
+        unifiedConfig.coverage = true;
+        unifiedConfig.metaBinaryOrder = rf->metaBinaryOrder;
+
+        const auto result
+            (tiling::generateUnified(mainDataset, *rf, cm.lodRange
+                                     , cm.lodTileRanges()
+                                     , unifiedConfig));
+
+        tiling::publishUnifiedIndex(result, tilingPath);
     }
 
     // 8) generate mapproxy resource configuration
