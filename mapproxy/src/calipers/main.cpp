@@ -120,10 +120,20 @@ void Calipers::configuration(po::options_description &cmdline
          , "Dataset type (dem or ophoto). Mandatory only "
          "if autodetect fails.")
 
+        ("gsd", po::value<double>()
+         , "Target floor GSD (ground sampling distance / pixel size) in METERS "
+         "the resource is meant to be used at; this sets the highest LOD "
+         "(floor resolution). When omitted, the nominal GSD is measured from "
+         "the dataset. The value may be lower or higher than the dataset's "
+         "true resolution: a lower (finer) value supports deeper raster layers "
+         "draped on top, a higher (coarser) value artificially limits the "
+         "dataset's effective resolution. "
+         "Mutually exclusive with --demToOphotoScale.")
+
         ("demToOphotoScale", po::value(&config_.demToOphotoScale)
-         ->default_value(config_.demToOphotoScale)->required()
-         , "Inverse scale between DEM's resolution and resolution of "
-         "most detailed orthophoto that can be draped on it. "
+         ->default_value(config_.demToOphotoScale)
+         , "[DEPRECATED, use --gsd] Inverse scale between DEM's resolution and "
+         "resolution of most detailed orthophoto that can be draped on it. "
          "Used for bottom LOD calculation. "
          "To get 2x better ophoto (i.e. resolution scale 1/2) use 2.")
 
@@ -154,6 +164,18 @@ void Calipers::configure(const po::variables_map &vars)
         config_.datasetType = vars["datasetType"].as<calipers::DatasetType>();
     }
 
+    if (vars.count("gsd")) {
+        if (!vars["demToOphotoScale"].defaulted()) {
+            throw po::error
+                ("--gsd and --demToOphotoScale are mutually exclusive.");
+        }
+        const auto gsd(vars["gsd"].as<double>());
+        if (gsd <= 0.0) {
+            throw po::error("--gsd must be a positive value in meters.");
+        }
+        config_.gsd = gsd;
+    }
+
     LOG(info3, log_)
         << "Config:"
         << "\n\tdataset = " << dataset_
@@ -174,6 +196,7 @@ bool Calipers::help(std::ostream &out, const std::string &what) const
                 "    Output format (stdout, machine readable):\n"
                 "\n"
                 "        gsd: GSD\n"
+                "        gsdOverride: GSD\n"
                 "        wrapx: overlap"
                 "        range<SRS1>: lodRange lod/tileRange\n"
                 "        range<SRS2>: lodRange lod/tileRange\n"
@@ -185,6 +208,10 @@ bool Calipers::help(std::ostream &out, const std::string &what) const
                 "    Where\n"
                 "        GSD       is computed ground sample distance\n"
                 "                  (resolution in meters per pixel)\n"
+                "        gsdOverride present when the effective floor GSD\n"
+                "                  differs from native (--gsd, or DEM\n"
+                "                  demToOphotoScale != 1); the floor GSD in\n"
+                "                  meters the resource is actually tiled for\n"
                 "        wrapx     dataset horizontal overlap in pixels\n"
                 "                  (only if datasets overlaps)\n"
                 "        SRS1-N    SRS in spatial division node 1-N\n"
@@ -289,6 +316,13 @@ int Calipers::run()
     }
 
     std::cout << "gsd: " << m.gsd << "\n";
+    if (m.gsdOverride) {
+        LOG(info2, log_)
+            << "Native GSD = " << m.gsd << " m, effective floor GSD = "
+            << *m.gsdOverride << " m (scale " << (m.gsd / *m.gsdOverride)
+            << ").";
+        std::cout << "gsdOverride: " << *m.gsdOverride << "\n";
+    }
     if (m.xOverlap) {
         std::cout << "wrapx: " << *m.xOverlap << "\n";
     }

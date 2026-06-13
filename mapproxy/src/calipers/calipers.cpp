@@ -573,10 +573,19 @@ Measurement measure(const vtslibs::registry::ReferenceFrame &referenceFrame
 
     m.gsd = computeGsd(dataset, referenceFrame);
 
-    // inverse GSD scale
-    const double invGsdScale((m.datasetType == DatasetType::dem)
-                             ? config.demToOphotoScale
-                             : 1.0);
+    // inverse GSD scale: an explicit target floor GSD (applies to any dataset
+    // type) overrides the legacy DEM-only demToOphotoScale
+    const double invGsdScale
+        (config.gsd
+         ? (m.gsd / *config.gsd)
+         : ((m.datasetType == DatasetType::dem)
+            ? config.demToOphotoScale
+            : 1.0));
+
+    // record the effective floor GSD whenever it differs from native
+    if (invGsdScale != 1.0) {
+        m.gsdOverride = m.gsd / invGsdScale;
+    }
 
     // division of source dataset
     math::Size2 steps(255, 255);

@@ -152,6 +152,9 @@ private:
 
     Resource::Id resourceId_;
 
+    /** Target floor GSD in meters, forwarded to calipers (see --gsd). */
+    boost::optional<double> gsd_;
+
     Config config_;
 };
 
@@ -210,6 +213,15 @@ void SetupResource::configuration(po::options_description &cmdline
          , "Desired bottom LOD. The actual bottom might be deeper in "
          "case of more detail dataset.")
 
+        ("gsd", po::value<double>()
+         , "Target floor GSD (ground sampling distance / pixel size) in METERS "
+         "the resource is meant to be used at; this sets the highest LOD "
+         "(floor resolution). When omitted, the nominal GSD is measured from "
+         "the dataset. The value may be lower or higher than the dataset's "
+         "true resolution: a lower (finer) value supports deeper raster layers "
+         "draped on top, a higher (coarser) value artificially limits the "
+         "dataset's effective resolution.")
+
         ("override.datasetHome", po::value<fs::path>()
          , "Dataset home path override if the default is undesirable. "
          "Relative to --dataRoot. Use with caution.")
@@ -263,6 +275,14 @@ void SetupResource::configure(const po::variables_map &vars)
 
     if (vars.count("tin.geoidGrid")) {
         config_.geoidGrid = vars["tin.geoidGrid"].as<std::string>();
+    }
+
+    if (vars.count("gsd")) {
+        const auto gsd(vars["gsd"].as<double>());
+        if (gsd <= 0.0) {
+            throw po::error("--gsd must be a positive value in meters.");
+        }
+        gsd_ = gsd;
     }
 
     if (vars.count("tms.resampling")) {
@@ -845,6 +865,7 @@ int SetupResource::run()
         LogLinePrefix linePrefix(" (calipers)");
         calipers::Config calipersConfig;
         calipersConfig.datasetType = asDatasetType(resourceType_);
+        calipersConfig.gsd = gsd_;
         return calipers::measure(*rf, ds.descriptor(), calipersConfig);
     }());
 

@@ -47,6 +47,15 @@ UTILITY_GENERATE_ENUM_CI(DatasetType,
 struct Config {
     boost::optional<DatasetType> datasetType;
     double demToOphotoScale;
+
+    /** Target floor GSD (ground sampling distance / pixel size) in meters the
+     *  resource is meant to be used at; sets the highest LOD (floor
+     *  resolution). When unset, the nominal GSD measured from the dataset is
+     *  used (scaled by demToOphotoScale for DEMs). Mutually exclusive with an
+     *  explicit demToOphotoScale.
+     */
+    boost::optional<double> gsd;
+
     double tileFractionLimit;
 
     Config()
@@ -67,6 +76,13 @@ struct Measurement {
 
     DatasetType datasetType;
     double gsd;
+
+    /** Effective floor GSD (meters) the dataset is tiled for, set whenever it
+     *  differs from the native gsd (i.e. an explicit --gsd was given, or the
+     *  DEM demToOphotoScale is not 1). Unset means native gsd is used as-is.
+     */
+    boost::optional<double> gsdOverride;
+
     vtslibs::vts::LodRange lodRange;
     vtslibs::vts::TileRange tileRange;
     Node::list nodes;

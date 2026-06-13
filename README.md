@@ -65,6 +65,10 @@ that allow `cartolina-js` to find them.
 
 Authoritative resource-definition documentation is available in a separate [document](docs/resources.md).
 
+A growing body of tileserver-relevant, authoritative documentation — operator
+guides for the command-line tools, the metanode store and tiling workflows — is
+maintained in the wiki of the sister project [`cartolina-js`](https://github.com/cartolinadev/cartolina-js/tree/main/docs/wiki).
+
 
 ## Install
 

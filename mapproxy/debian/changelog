@@ -1,3 +1,9 @@
+cartolina-tileserver (1.117metanodestore) testing; urgency=medium
+
+  * mapproxy-calipers: --gsd option
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 13 Jun 2026 15:50:40 +0200
+
 cartolina-tileserver (1.116metanodestore) testing; urgency=medium
 
   * metanode store hardening: store is now used in tiled geodata generators,
