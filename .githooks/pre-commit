@@ -1,13 +1,24 @@
 #!/usr/bin/env sh
 #
-# Block commits that would leak PII or secrets. Scans the staged diff for
-# common sensitive patterns. Set SKIP_SENSITIVE=1 to bypass for a known
-# false positive.
+# Require the session log and block commits that would leak PII or secrets.
+# Set SKIP_SESSION_LOG=1 to bypass the log check for a trivial change. Set
+# SKIP_SENSITIVE=1 to bypass a known false positive in the sensitive scan.
 #
 # Enable in a fresh clone with:  git config core.hooksPath .githooks
 #
 # Patterns avoid '\+' and in-class '\-' so they work with both GNU grep and
 # ugrep ('[+]' for a literal plus; '-' placed last in a character class).
+
+STAGED_FILES=$(git diff --cached --name-only)
+
+# Require session log to be staged (set SKIP_SESSION_LOG=1 to bypass).
+if [ -z "$SKIP_SESSION_LOG" ]; then
+  if ! echo "$STAGED_FILES" | grep -q '^docs/session-log\.md$'; then
+    echo "pre-commit: docs/session-log.md is not staged."
+    echo "Update the session log before committing, or set SKIP_SESSION_LOG=1."
+    exit 1
+  fi
+fi
 
 # Added lines of the staged diff (excluding the '+++' file headers).
 added() {
@@ -22,6 +33,12 @@ fail_sensitive() {
 
 if [ -z "$SKIP_SENSITIVE" ]; then
   ADDED=$(added)
+
+  # Email addresses
+  if echo "$ADDED" \
+      | grep -qE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'; then
+    fail_sensitive "email address in staged changes"
+  fi
 
   # Absolute home directory paths
   if echo "$ADDED" | grep -qE '/home/[a-zA-Z0-9_]+/'; then
@@ -55,6 +72,18 @@ if [ -z "$SKIP_SENSITIVE" ]; then
       | grep -qE \
         '\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'; then
     fail_sensitive "IPv4 address in staged changes"
+  fi
+
+  # Recovery / backup codes formatted as xxxx xxxx or xxxx-xxxx.
+  if echo "$ADDED" | grep -qE '\b[0-9]{4}[ -][0-9]{4}\b'; then
+    fail_sensitive "recovery code pattern (xxxx xxxx) in staged changes"
+  fi
+
+  # Three or more added lines containing standalone 8-digit codes.
+  if echo "$ADDED" \
+      | grep -oE '\b[0-9]{8}\b' \
+      | awk 'BEGIN{n=0} /^[0-9]{8}$/{n++; if(n>=3) exit 0} END{exit (n<3)}'; then
+    fail_sensitive "block of 8-digit codes in staged changes"
   fi
 fi
 

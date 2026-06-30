@@ -1,6 +1,10 @@
 # Preamble
 
-This file is the authoritative mapproxy resource documentation. Please, keep it in sync with the actual implementation.
+This is an older, incomplete reference for mapproxy resource definitions. It
+may lag the implementation. Verify it against the resource definitions under
+`mapproxy/src/mapproxy/definition/` and update it when discrepancies are found.
+
+See [index.md](index.md) for the tileserver documentation contents.
 
 # Resource definition file
 

@@ -51,9 +51,10 @@ worked with the old vts-mapproxy should still work with `cartolina-tileserver`.
 
 ## Documentation
 
-There is currently no original documentation for `cartolina-tileserver`, but you
-can rely on the [legacy documentation of vts-mapproxy](https://web.archive.org/web/20230206094802/https://vts-geospatial.org/reference/server/mapproxy/index.html#mapproxy), which is still
-relevant.
+Original documentation for `cartolina-tileserver` starts at the
+[documentation index](docs/index.md). It is still incomplete, so you can rely
+on the [legacy documentation of vts-mapproxy](https://web.archive.org/web/20230206094802/https://vts-geospatial.org/reference/server/mapproxy/index.html#mapproxy), which is still
+relevant as a fallback.
 
 If you want to use the new generators you need to figure things out [from the source code](mapproxy/src/mapproxy/definition/tms.hpp) at the 
 moment. But if you have the technological dexterity to run the tile server
@@ -323,5 +324,3 @@ Check the [CONTRIBUTING.md](CONTRIBUTING.md) file.
 
 `cartolina-tileserver` is open source under a permissive BSD 2-clause license. See
 [LICENSE](LICENSE) for details.
-
-

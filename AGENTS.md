@@ -12,27 +12,68 @@ wrong. Everything here was verified in-tree; correct it if it drifts.
 
 ## Documentation
 
-A large body of cartolina documentation lives in the wiki of the sister
-`cartolina-js` project (the client side of cartolina), under `docs/wiki/` in
-that repository (`index.md` is the entry point). The wiki is shared across the
-whole project; some of it pertains specifically to the tileserver. Examine it
-for relevant information before diving into the codebase.
+Cartolina consists of the `cartolina-js` frontend and the
+`cartolina-tileserver` backend. Documentation is split by scope.
 
-**Always read the wiki before answering conceptual questions and before any 
-non-trivial change. The wiki is where ongoing work is tracked across both repos; 
-the tileserver git log alone does not tell you what is planned or in flight. 
-At minimum, consult:
+Documentation specific to the tileserver lives under [docs/](docs/), with
+[docs/index.md](docs/index.md) as its entry point. This includes operator
+guides, implementation notes, tool documentation, and the tileserver
+[session log](docs/session-log.md). When a code change makes this
+documentation inaccurate, update the affected document in the same change.
 
-- `docs/wiki/backlog.md` — deferred bugs and follow-up work, including
-  tileserver items (e.g. the pre-built metatile index and `mapproxy-tiling`
-  redesign).
-- `docs/wiki/session-log.md` — chronological record of significant work and
-  non-obvious findings; this is where to confirm whether a paired client-side
-  change (e.g. a "renderer update needed") has actually been done.
+Documentation for the project as a whole lives in the wiki of the sister
+`cartolina-js` repository. The wiki also contains frontend documentation,
+frontend/backend interface documentation, all RFCs, the shared backlog, and
+work that spans both repositories. Start at the shared wiki index:
+<https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/index.md>.
+
+Record significant work confined to this repository in
+`docs/session-log.md`. Record project-wide or cross-repository work in the
+`cartolina-js` session log (`docs/wiki/session-log.md`):
+<https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
+For work that materially changes both repositories, add concise entries to
+both logs and link them instead of duplicating the full account.
+
+**Always read both documentation indexes before answering conceptual
+questions and before any non-trivial change.** The shared wiki is where
+project-wide work is tracked; the tileserver documentation is where mature
+tileserver behavior is documented. At minimum, consult:
+
+- `docs/index.md` and the relevant tileserver topic document;
+- `docs/backlog.md` for deferred work confined to the tileserver;
+- `docs/session-log.md` for recent tileserver work;
+- the shared backlog for deferred bugs and follow-up work, including
+  tileserver items:
+  <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/backlog.md>;
+- the `cartolina-js` session log (`docs/wiki/session-log.md`) for significant
+  work and non-obvious findings, including the status of paired client-side
+  changes:
+  <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>;
 - Any topic doc named for the area in play. 
 
 Do not infer current obligations from a stale changelog line; cross-check it
 against the session log and the code before reporting it as outstanding.
+
+Add new entries to `docs/backlog.md` directly below its introduction, newest
+first. Add new entries to `docs/session-log.md` directly below its
+introduction, newest first.
+
+This is a public open-source repository. Public documentation, including the
+backlog and session log, may refer to:
+
+- this software, its public formats and interfaces, and its public
+  dependencies; and
+- URLs, resource identifiers, filesystem paths, and datasets used by examples
+  or demos committed to this repository.
+
+Do not record private application names, internal or customer APIs, private
+hostnames or URLs, customer or partner names, proprietary dataset names,
+credentials, tokens, or filesystem paths learned from a private installation.
+Do not record private validation details such as coordinates, view parameters,
+screenshots, or performance measurements tied to private data.
+
+When private testing informs public work, document only the generic software
+conclusion. Keep identifying details in agent memory or a private repository.
 
 That said, documentation is only a secondary source of truth. The codebase is
 the bible and empirical verification the holy grail: never optimise a weak or
@@ -115,10 +156,10 @@ http://<host>:<port>/<refframe>/surface/<group>/<id>/<lod>-<x>-<y>[-<sub>].<ext>
   sets; there is no fixed default.
 - `<refframe>/<group>/<id>` are not fixed either: they follow from the resource
   configuration (the config files), so read those to learn the real paths. A
-  typical path might look like:
+  concrete path might look like:
 
 ```
-http://<host>/melown2015/surface/topoearth/viewfinder-dem1/14-4345-2867-0.nm
+http://<host>/<rf>/surface/<group>/<id>/14-4345-2867-0.nm
 ```
 
 - `<ext>`: `bin` = mesh, `nm` = normal map, `nav` = navtile, `meta` = metatile.
@@ -151,6 +192,12 @@ The externals under [externals/](externals/) are git submodules (see
 
 ## Commits
 
+- The committed pre-commit hook requires `docs/session-log.md` to be staged.
+  Enable it in a fresh clone with `git config core.hooksPath .githooks`. For a
+  trivial change that does not warrant a session-log entry, commit with
+  `SKIP_SESSION_LOG=1`. The hook also blocks common PII, secrets, and recovery
+  codes in staged additions; use `SKIP_SENSITIVE=1` only for a known false
+  positive.
 - Never commit to `main`/`master` (or any integration branch) without an
   explicit request from the user. This applies to submodules too.
 - Don't create micro-commits; group a logical unit of work into one commit.
@@ -180,7 +227,7 @@ The externals under [externals/](externals/) are git submodules (see
 - Knuth's rule: premature optimization is the root of all evil. Do not buy
   speculative performance with code complexity; optimize when a measurement
   shows the need, against that measurement, and record deferred optimization
-  ideas in the wiki backlog instead of the codebase.
+  ideas in [docs/backlog.md](docs/backlog.md) instead of the codebase.
 - Before reimplementing anything, read the docs of the supporting libraries,
   especially GDAL and PROJ, and dig deep; much of what you need already
   exists. Write as little code as possible.
@@ -193,4 +240,3 @@ The externals under [externals/](externals/) are git submodules (see
 - New modules (files created in this fork) carry the copyright line
   `Copyright (c) YYYY Montevallo Consulting, s.r.o.` (current year) in the
   standard BSD header block.
-
