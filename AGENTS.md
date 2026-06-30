@@ -212,6 +212,9 @@ The externals under [externals/](externals/) are git submodules (see
   favour standard-library and RAII idioms over hand-rolled or C-style code.
   Aim high — this codebase should rock.
 - 80-character hard line limit, in code and prose.
+- No `else if` chains. Prefer independent guard `if`s (each with its own
+  reason), early returns, or a `switch` over cascading `else if`. A plain
+  `if`/`else` is fine; it's the chained `else if` ladder to avoid.
 - Comment style: javadoc `/** ... */` for function/member documentation;
   `/* ... */` for multi-line non-body notes; `//` for in-body comments. Keep
   it consistent — don't mix styles for the same kind of comment.

@@ -490,7 +490,7 @@ metatileFromDemImpl(const vts::TileId &tileId, Sink &sink, Arsenal &arsenal
 } // namespace
 
 std::unique_ptr<mnstore::Store>
-openMetanodeStore(const MetanodeStoreConfig &config)
+openMetanodeStore(const MetanodeStoreConfig &config, bool *needsReprepare)
 {
     const fs::path storePath
         (config.datasetDir / ("metanodes." + config.referenceFrame));
@@ -572,9 +572,18 @@ openMetanodeStore(const MetanodeStoreConfig &config)
                 source >> derivedFrom;
             }
             if (derivedFrom != pairing) {
-                reject("delivery index is not derived from the paired "
-                       "flag tile index; re-prepare the resource "
-                       "(bump its revision or clear its cache).");
+                /* The store is fine; only the cached delivery index is
+                 * stale (built from an older flag tile index). A
+                 * re-prepare rebuilds the delivery index from the paired
+                 * tiling and adopts the store, so signal the caller
+                 * rather than degrading to the warp path.
+                 */
+                if (needsReprepare) { *needsReprepare = true; }
+                LOG(info2)
+                    << "Generator for <" << config.id << ">: metanode store "
+                    << storePath << " is paired with a newer flag tile index "
+                    "than the cached delivery index; re-preparing to adopt it.";
+                return {};
             }
         }
 
@@ -596,6 +605,15 @@ openMetanodeStore(const MetanodeStoreConfig &config)
 
 bool legacyDemMetatileInputsAvailable(const std::string &demDataset)
 {
+    /* Probe quietly. The min/max warp pyramids are intentionally absent for
+     * store-backed datasets, so check for their presence before opening to
+     * avoid GeoDataset::open's err2 "failed to open" log noise.
+     */
+    if (!fs::exists(demDataset + ".min")
+        || !fs::exists(demDataset + ".max"))
+    {
+        return false;
+    }
     try {
         geo::GeoDataset::open(demDataset + ".min");
         geo::GeoDataset::open(demDataset + ".max");

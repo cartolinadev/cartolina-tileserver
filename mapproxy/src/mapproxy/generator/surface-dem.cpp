@@ -109,6 +109,7 @@ SurfaceDem::SurfaceDem(const Params &params)
            , definition_.dem.geoidGrid)
     , maskTree_(absoluteDatasetRf(definition_.mask))
     , warpFallbackAvailable_(false)
+    , metanodeStoreStale_(false)
 {
     if (definition_.landcover) {
         landcover_.emplace(
@@ -126,6 +127,16 @@ SurfaceDem::SurfaceDem(const Params &params)
 
         // attach the metanode store when a valid one is paired
         openMetanodeStore();
+
+        // A usable store is hidden behind a stale delivery index; refuse
+        // readiness so the generator re-prepares (rebuilding the delivery
+        // index) and adopts the store instead of serving via the warp path.
+        // This is what an on-disk reopen cannot fix by itself.
+        if (metanodeStoreStale_) {
+            success = false;
+        }
+
+        // neither a store nor the legacy warp inputs -> cannot serve metatiles
         if (!store_ && !warpFallbackAvailable_) {
             success = false;
         }
@@ -273,7 +284,7 @@ void SurfaceDem::prepare_impl(Arsenal&)
 void SurfaceDem::openMetanodeStore()
 {
     store_.reset();
-    warpFallbackAvailable_ = legacyDemMetatileInputsAvailable(dem_.dataset);
+    metanodeStoreStale_ = false;
 
     const auto datasetDir(absoluteDataset(definition_.dem.dataset));
     MetanodeStoreConfig storeConfig;
@@ -288,7 +299,13 @@ void SurfaceDem::openMetanodeStore()
     storeConfig.hasMask = bool(definition_.mask);
     storeConfig.lodRange = resource().lodRange;
 
-    store_ = ::openMetanodeStore(storeConfig);
+    store_ = ::openMetanodeStore(storeConfig, &metanodeStoreStale_);
+
+    // The legacy min/max warp pyramids are only consulted when the store is
+    // not serving; probing them while a store is in use would emit needless
+    // "missing dataset" noise for store-backed datasets that lack them.
+    warpFallbackAvailable_
+        = store_ ? false : legacyDemMetatileInputsAvailable(dem_.dataset);
 }
 
 void SurfaceDem::checkMetatileSource() const

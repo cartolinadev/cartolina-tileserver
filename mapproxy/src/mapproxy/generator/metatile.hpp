@@ -80,13 +80,25 @@ struct MetanodeStoreConfig {
 /** Opens and validates a metanode store. Returns null when the store is
  *  absent or rejected; every fallback-worthy condition is logged at W3.
  *
+ *  A store that is structurally valid but paired with a newer flag tile
+ *  index than the cached delivery index is *not* a warp-fallback case: a
+ *  re-prepare rebuilds the delivery index and adopts the store. When this
+ *  is detected and @p needsReprepare is non-null, it is set to true (and
+ *  null is returned without the scary reject) so the generator can force a
+ *  re-prepare instead of silently degrading to the warp path.
+ *
  * @param config validation context
+ * @param needsReprepare optional out-flag set when a re-prepare would adopt
+ *        the store; left untouched otherwise
  * @return opened store, or null when the warp path must be used
  */
 std::unique_ptr<mnstore::Store>
-openMetanodeStore(const MetanodeStoreConfig &config);
+openMetanodeStore(const MetanodeStoreConfig &config
+                  , bool *needsReprepare = nullptr);
 
 /** Checks whether the legacy warp metatile path has its min/max inputs.
+ *  Probes quietly: a missing pyramid (the norm for store-backed datasets)
+ *  returns false without emitting GeoDataset open errors.
  *
  * @param demDataset path to the normal DEM dataset link
  * @return true when both dem.min and dem.max can be opened

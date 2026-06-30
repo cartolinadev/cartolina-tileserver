@@ -117,6 +117,12 @@ private:
     std::unique_ptr<mnstore::Store> store_;
 
     bool warpFallbackAvailable_;
+
+    /** Set when a usable metanode store was rejected only because the
+     *  cached delivery index is stale; the generator must re-prepare to
+     *  rebuild the delivery index and adopt the store.
+     */
+    bool metanodeStoreStale_;
 };
 
 } // namespace generator

@@ -5,6 +5,37 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-06-30 — Metanode store self-heal and metatile URL revision fix
+
+A metanode-store-backed DEM resource could log a delivery-index mismatch on
+every start yet still come up "ready", because a revision-only bump is
+classified `Changed::safely` and never sets `changeEnforced()`. The reopen
+path (`SurfaceBase::loadFiles`) then reused the stale `delivery.index.src`
+and the generator went ready via the warp path, so bumping the revision never
+regenerated the delivery index — clearing the resource cache was the only
+working workaround.
+
+`openMetanodeStore()` now distinguishes the recoverable case (the store is
+valid but the cached delivery index was derived from an older flag tile index)
+from genuine warp-fallback conditions, reporting it through a `needsReprepare`
+out-flag. `SurfaceDem` refuses readiness on that flag, so the generator
+re-prepares, rebuilds the delivery index from the paired tiling, and adopts
+the store. The pairing-digest mismatch (store built from a different tiling)
+deliberately stays a warp fallback, since a re-prepare cannot fix it.
+
+The legacy min/max warp pyramids are now probed only when no store is serving,
+and `legacyDemMetatileInputsAvailable()` checks for the files before opening
+them, removing the err2 "failed to open" noise emitted for store-backed
+datasets that intentionally lack those pyramids.
+
+Fixed a duplicated revision in surface metatile URLs (`.meta?<rev>gr=...`).
+The vts-libs `fileTemplate()` opened the query string with the bare revision
+value before appending `gr=`/`&r=`; it now opens with `?` only. Pulled in via
+the vts-libs submodule.
+
+Recorded a code-style rule in `AGENTS.md`: no `else if` chains; prefer
+independent guard `if`s, early returns, or `switch`.
+
 ## 2026-06-30 — Establish tileserver documentation ownership
 
 Created [index.md](index.md) as the tileserver documentation entry point and
