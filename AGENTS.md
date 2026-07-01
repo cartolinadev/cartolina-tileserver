@@ -218,6 +218,11 @@ The externals under [externals/](externals/) are git submodules (see
 - Comment style: javadoc `/** ... */` for function/member documentation;
   `/* ... */` for multi-line non-body notes; `//` for in-body comments. Keep
   it consistent — don't mix styles for the same kind of comment.
+- Comments explain what the code **does**, in present-tense positive terms —
+  never what it used to do or does not do. No arguing with replaced code
+  ("rather than the old X", "instead of the previous approach", "unlike
+  before", "no longer …"): the reader sees only the current code. Before/after
+  rationale belongs in the commit message, not the source.
 - Every new public method gets a javadoc `/** */` block with `@param` and
   `@return`; obligatory unless the method is absolutely trivial.
 - Descriptive identifiers; avoid single-character names (`index` not `i`,

@@ -28,6 +28,8 @@
 
 #include "utility/openmp.hpp"
 
+#include "geo/srsfactors.hpp"
+
 #include "vts-libs/vts/nodeinfo.hpp"
 #include "vts-libs/vts/csconvertor.hpp"
 #include "vts-libs/vts/tileop.hpp"
@@ -100,10 +102,6 @@ inline bool partial(const OptCorners &c) {
     return (sum > 0) && (sum < 4);
 }
 
-inline bool valid(const OptCorners &c) {
-    return c[0] && c[1] && c[2] && c[3];
-}
-
 class Node {
 public:
     typedef std::shared_ptr<Node> pointer;
@@ -125,8 +123,8 @@ public:
         step.height /= steps.height;
     }
 
-    bool run(double invGsdScale, double tileFractionLimit) {
-        if (sample(invGsdScale, tileFractionLimit)) {
+    bool run(double targetGsd, double invGsdScale, double tileFractionLimit) {
+        if (sample(targetGsd, invGsdScale, tileFractionLimit)) {
             refine();
             minLod();
             return true;
@@ -170,7 +168,7 @@ private:
         return c;
     }
 
-    bool sample(double invGsdScale, double tileFractionLimit);
+    bool sample(double targetGsd, double invGsdScale, double tileFractionLimit);
     void refine();
     void minLod();
 
@@ -205,101 +203,62 @@ vts::TileRange Node::globalRange() const
                          , tileRange_.ur(0) + lch.x, tileRange_.ur(1) + lch.y);
 }
 
-bool Node::sample(double invGsdScale, double tileFractionLimit)
+bool Node::sample(double targetGsd, double invGsdScale, double tileFractionLimit)
 {
     const auto &nodeId(node.nodeId());
     const auto paneSize(math::size(node.extents()));
 
-    // size of dataset
-    const auto es(size(extents));
-    // center of dataset
-    const auto dsCenter(math::center(extents));
-
-    // calculate pixel and halfpixel size
-    const math::Size2f px((es.width / ds.size.width)
-                        , (es.height / ds.size.height));
-    const math::Size2f hpx(px.width / 2.0, px.height / 2.0);
-
-    // best (local) LOD computed for this node
-    // make_optional used to get rid of "maybe uninitialized" GCC warning
-    auto bestLod(boost::make_optional<double>(false, 0.0));
-
-    double bestDistance(std::numeric_limits<double>::max());
-
-    // process whole grid
+    // Sample the dataset on the grid, projecting each grid point into the node's
+    // SRS: mark coverage (grid), record the projected points (projectedGrid) and
+    // accumulate the node-local extents (localExtents, updated inside convert()),
+    // all consumed by refine()/minLod().
+    std::size_t inside(0);
     double y(extents.ll(1));
     for (int j(0); j < grid.rows; ++j, y += step.height) {
         double x(extents.ll(0));
         for (int i(0); i < grid.cols; ++i, x += step.width) {
-
             // try to convert grid point to node's SRS
-            if (convert(projectedGrid(j, i), x, y)) {
-                continue;
-            }
+            if (convert(projectedGrid(j, i), x, y)) { continue; }
 
             // valid grid point, mark
             grid(j, i) = 255;
-
-            // make point a pixel center, fix coordinates on boundary
-            math::Point2d p(x, y);
-            if (i == 0) { p(0) += hpx.width; }
-            else if (i == grid.cols) { p(0) -= hpx.width; }
-            if (j == 0) { p(1) += hpx.height; }
-            else if (j == grid.rows) { p(1) -= hpx.height; }
-
-
-            // convert pixel around grid point to node's SRS
-            std::array<math::Point2d, 4> corners;
-            if (convert(corners[0], p(0) - hpx.width
-                                  , p(1) - hpx.height)
-                || convert(corners[1], p(0) - hpx.width
-                                     , p(1) + hpx.height)
-                || convert(corners[2], p(0) + hpx.width
-                                     , p(1) + hpx.height)
-                || convert(corners[3], p(0) + hpx.width
-                                     , p(1) - hpx.height))
-            {
-                continue;
-            }
-
-            // we have valid quadrilateral
-
-            // calculate distance between pixel center and dataset center
-            const auto distance(ublas::norm_2(p - dsCenter));
-
-            // futher than previous best point?
-            if (distance >= bestDistance) { continue; }
-
-            // calculate (approximate) projected quad area
-            const auto pxArea
-                (vts::triangleArea(corners[0], corners[1], corners[2])
-                 + vts::triangleArea(corners[2], corners[3], corners[0]));
-
-            // calculate best lod:
-            // divide node's pane area by tiles area
-            // apply square root to get number of tiles per side
-            // and log2 to get lod
-            // NB: log2(sqrt(a)) = 0.5 * log2(a)
-            // NB: inverse GSD scale is applied to node pane area
-            // NB: calculated in two passes to overcome problem with huge
-            // numbers (area(paneSize) for webmercator is realy huge and loses
-            // precision)
-            const auto tmp((paneSize.width * invGsdScale * invGsdScale)
-                           / (pxArea * vr::BoundLayer::tileArea()));
-            const auto lod(0.5 * std::log2(tmp * paneSize.height));
-
-            // sanity check: no negative LOD
-            if (lod >= 0.0) {
-                bestLod = lod;
-                bestDistance = distance;
-            }
+            ++inside;
         }
     }
 
-    if (!bestLod) { return false; }
+    // no part of the dataset falls inside this node
+    if (!inside) { return false; }
 
-    // round to integral LOD
-    vts::Lod computed(std::ceil(*bestLod));
+    // Per-node tiling depth.
+    //
+    // The dataset is tiled so that, at the finest LOD, one tile pixel equals the
+    // target ground sampling distance G = targetGsd (metres).  A node subdivides
+    // into 2^L x 2^L tiles, so one tile spans ground area A_ground / 4^L; a tile
+    // carries T x T pixels, so A_ground / 4^L = (T * G)^2, i.e.
+    //
+    //     L = 0.5 * log2( A_ground / (T^2 * G^2) )
+    //
+    // A_ground is the node's ground footprint: its area in the node SRS
+    // (paneSize) divided by the SRS areal scale factor (pjFactors) sampled at
+    // the node centre.  Sampling the scale at the node centre makes congruent
+    // nodes (e.g. the six QSC cube faces) yield an identical depth.
+    //
+    // NB: T (tile edge, 256 px) is baked into BoundLayer::tileArea(); it would
+    // ideally be configurable.
+    // NB: evaluated in two passes (width, then height) to keep precision for
+    // huge panes (paneSize area for webmercator is enormous).
+    const double arealScale
+        (geo::SrsFactors(node.srsDef())
+             (math::center(node.extents())).arealScaleFactor);
+    const auto tmp((paneSize.width / arealScale)
+                   / (vr::BoundLayer::tileArea() * targetGsd * targetGsd));
+    const auto bestLod(0.5 * std::log2(tmp * paneSize.height));
+
+    // sanity check: no negative LOD (node coarser than a single tile)
+    if (bestLod < 0.0) { return false; }
+
+    // round up to the immediately finer-or-equal integral LOD
+    vts::Lod computed(std::ceil(bestLod));
 
     // lowest root's child at computed (local) lod
     const vts::NodeInfo lowestChild(node.referenceFrame()
@@ -487,13 +446,20 @@ double computeGsd(const geo::GeoDataset::Descriptor &ds
     corners[3] = ds2tm(math::Point2d(dsCenter(0) + hpx.width
                                      , dsCenter(1) - hpx.height));
 
-    // compute (aproximage) area of pixel in tmerc
-    const auto pxArea
-        (vts::triangleArea(corners[0], corners[1], corners[2])
-         + vts::triangleArea(corners[2], corners[3], corners[0]));
+    // The native GSD is the ground pixel's longer projected edge: the
+    // least-magnified direction (lowest projection scale factor), which is the
+    // honest native resolution -- a projection's poleward longitudinal
+    // over-sampling (e.g. plate-carree cos(lat) packing) does not inflate it.
+    //
+    // corners are ordered (-w,-h),(-w,+h),(+w,+h),(+w,-h): the (0->1),(3->2)
+    // edges span the meridional (dlat) direction, (0->3),(1->2) the parallel
+    // (dlon) direction. Average the two opposite edges per direction.
+    const double edgeLat(0.5 * (ublas::norm_2(corners[1] - corners[0])
+                                + ublas::norm_2(corners[2] - corners[3])));
+    const double edgeLon(0.5 * (ublas::norm_2(corners[3] - corners[0])
+                                + ublas::norm_2(corners[2] - corners[1])));
 
-    // compute gsd from pixel area
-    return std::sqrt(pxArea);
+    return std::max(edgeLat, edgeLon);
 }
 
 math::Extents2 Node::navExtents() const
@@ -587,6 +553,11 @@ Measurement measure(const vtslibs::registry::ReferenceFrame &referenceFrame
         m.gsdOverride = m.gsd / invGsdScale;
     }
 
+    // effective target floor GSD the finest LOD must resolve; the per-node depth
+    // needs only this. invGsdScale is passed on to the nodes for the
+    // source-pixel-space sourceBlockLimit.
+    const double targetGsd(m.gsd / invGsdScale);
+
     // division of source dataset
     math::Size2 steps(255, 255);
 
@@ -598,7 +569,7 @@ Measurement measure(const vtslibs::registry::ReferenceFrame &referenceFrame
     for (std::size_t nodeIndex = 0; nodeIndex < rfNodes.size(); ++nodeIndex) {
         auto node(std::make_shared<Node>(dataset, rfNodes[nodeIndex], steps));
 
-        if (node->run(invGsdScale, config.tileFractionLimit)) {
+        if (node->run(targetGsd, invGsdScale, config.tileFractionLimit)) {
             UTILITY_OMP(critical(calipers))
                 nodes.push_back(node);
         }

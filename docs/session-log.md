@@ -5,6 +5,39 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-01 — calipers: per-node LOD from node-centre scale (QSC face symmetry)
+
+`mapproxy-calipers` reported a different maximum LOD per QSC cube face on a
+global plate-carrée dataset, even though the six `earth-qsc` faces are
+geometrically congruent (equatorial side faces one LOD shallower than the
+top/bottom polar faces). `Node::sample()` derived per-node depth from the
+projected area of one source pixel taken at the grid sample nearest the dataset
+centre. Side faces contain the equator so they were probed at latitude ≈ 0°;
+polar faces were probed at their lowest-latitude edge. Because a plate-carrée
+source pixel covers ground ∝ cos φ, the higher-latitude probe sat on denser
+ground pixels, inflating the LOD, and `std::ceil` snapped the fractional gap to
+an integer split. This is not cosmetic: the final tiling caps every node to the
+maximum over per-node maxima, so the inflated polar LOD propagates to all faces
+and tiles the whole body one LOD (4× the tiles) deeper than warranted.
+
+Depth is now derived from a single representative target GSD and each node's own
+projection scale sampled at the **node centre** via `geo::SrsFactors` (PROJ
+factors): `L = ½·log2(A_ground / (tileArea·G²))`, with `A_ground =
+area(node.extents()) / arealScaleFactor(centre)` and `G` the target floor GSD.
+Congruent nodes yield an identical depth by construction, with no polar
+singularity (a QSC face centre is a regular point of its SRS). `computeGsd()`
+now returns the larger projected pixel edge (the least-magnified direction — the
+honest native resolution) instead of `sqrt(area)`; a no-op for an
+equator-centred dataset. `invGsdScale` is retained only for `sourceBlockLimit`
+and native/override reporting, and the LOD math takes the target GSD directly.
+
+Verified against the rebuilt binary: `earth-qsc --gsd 10` goes from a merged
+`2,15` (sides 14 / poles 15) to a uniform `2,14`; `mars-qsc --gsd 10` from `2,14`
+to a uniform `2,13`; the `melown2015` merged range is unchanged while its
+polar-stereographic caps drop the same way (they were tiling the ~10× plate-carrée
+longitudinal over-sampling above ~80° as if it were real detail — ~1.6 LODs,
+rounded to 2). Only `calipers.cpp` changed; single-file recompile.
+
 ## 2026-06-30 — Metanode store self-heal and metatile URL revision fix
 
 A metanode-store-backed DEM resource could log a delivery-index mismatch on
