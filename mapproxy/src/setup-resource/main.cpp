@@ -262,8 +262,9 @@ void SetupResource::configuration(po::options_description &cmdline
          "location. '--prune false' tiles the full lod range everywhere.")
         ("skipPartial", po::value(&config_.skipPartial)
          ->default_value(config_.skipPartial)->implicit_value(true)
-         , "Suppress the mesh of non-watertight (partial) tiles for a DEM "
-         "(metanode-store mode), so a global surface can fill the holes.")
+         , "Discard non-watertight (partial) DEM tile meshes, removing their "
+         "boundary cracks and framebuffer switches at the cost of their "
+         "valid partial content. Useful over a global base surface.")
         ;
 
     config.add_options()
@@ -1004,10 +1005,24 @@ int SetupResource::run()
             }
         }
 
-        const auto result
+        auto result
             (tiling::generateUnified(mainDataset, *rf, cm.lodRange
                                      , cm.lodTileRanges()
                                      , unifiedConfig));
+
+        if (result.tileIndex.empty()) {
+            LOGTHROW(err2, std::runtime_error)
+                << "Unified tiling emitted no tiles.";
+        }
+        if (unifiedConfig.pruneGsd
+            && (result.tileIndex.maxLod() < cm.lodRange.max))
+        {
+            LOG(info3)
+                << "Spatial prune reduced the final maximum LOD from "
+                << cm.lodRange.max << " to "
+                << result.tileIndex.maxLod() << ".";
+            cm.lodRange.max = result.tileIndex.maxLod();
+        }
 
         tiling::publishUnified
             (result, unifiedConfig, resourceId_.referenceFrame

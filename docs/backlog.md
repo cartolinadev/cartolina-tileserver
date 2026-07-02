@@ -10,6 +10,25 @@ The metanode-store and unified-tiling work in this backlog is specified by
 
 New entries are added directly below this introduction, newest first.
 
+## P1 CORRECTNESS: `skipPartial` must remove geometry-less leaves
+
+**Opened:** 2026-07-02
+**Status:** open; `--skipPartial` is not safe for client delivery.
+
+`skipPartial` clears each partial tile's mesh, watertight, and navtile flags,
+but the tiling pass does not close the resulting delivery hierarchy from the
+leaves upward. A suppressed tile is useful only when it is a structural node
+leading to geometry at a deeper LOD. A suppressed tile with no such geometry
+is a geometry-less leaf, which the client cannot handle and which has no
+reason to exist.
+
+Build the delivery hierarchy bottom-up during tiling and reflagging. Remove
+every geometry-less leaf, propagate that removal through ancestors that then
+become geometry-less leaves themselves, and retain a geometry-less node only
+when at least one child branch ultimately leads to a mesh. Cover both ordinary
+generation and `--reflag --skipPartial true`, and verify that the resulting
+hierarchy contains no geometry-less leaf.
+
 ## CORRECTNESS (tileserver): the store serve path must not depend on warp fallback
 
 **Opened:** 2026-07-02
@@ -557,4 +576,3 @@ naturally.
   decision.
 
 ---
-

@@ -97,12 +97,12 @@ The unified pass is what `mapproxy-tiling --apply` runs for a DEM
 (`mapproxy-setup-resource --legacyTiling` selects the old per-tile
 analysis instead). It produces, in one run, both:
 
-- the flag **tile index** — a quadtree recording which tiles have
-  mesh data, which are watertight, and which carry navtile data (see
+- the flag **tile index** — the compact, policy-applied delivery view:
+  mesh, watertight, navtile and reachable subtrees (see
   [tile-index.md][tile-index]); and
-- the **metanode store** — a parallel, separate quadtree holding the
-  per-tile height range (and the same mesh/watertight flags), the
-  artifact the serve path reads instead of warping.
+- the **metanode store** — a parallel, separate quadtree holding raw
+  per-tile metadata: source coverage (`partial` or `full`) and min/max
+  height, the artifact the serve path reads instead of warping.
 
 **Method.** Per reference-frame division node, the pass runs **four
 one-pixel-per-tile GDAL filter passes** at the analysis maximum LOD,
@@ -122,9 +122,9 @@ nodata rule is opposite per band: mask passes warp with **no**
 sentinel cannot poison the range. Coarser LODs are then built bottom-up
 by an **in-tool 2×2 min/max mip loop** with no further source sampling
 (existence = OR, watertight = AND, min, max), and the same ascent emits
-both artifacts. The two are published atomically — staged to temp
-names, fsynced, renamed into place — and bound by a **pairing digest**
-so the serve path can never pair a new store with an old index.
+both artifacts. The two are staged to temporary names, fsynced, replaced
+sequentially, and bound by a **pairing digest**. Mapproxy rejects a mixed
+generation if publication is interrupted or overlaps resource preparation.
 
 The four passes call GDAL's `GDALWarp()` utility API (libgeo's
 `warpInto` degenerated at the one-pixel-per-tile ratio and could
@@ -139,10 +139,11 @@ subdivision passes the source resolution at its own location — the
 per-tile version of the calipers depth measure, evaluated from the
 node's projection area scale, so a projection's area inflation no longer
 forces over-generation past the source. `--skipPartial` clears the mesh
-flag on non-watertight tiles so partial coverage produces no served
-geometry. Both touch only the flag index; the metanode store always
-records every tile's true coverage, which is what lets `--reflag`
-change these policies later without re-warping (see the operator guide).
+flag on non-watertight tiles, sacrificing their valid partial content to
+eliminate boundary cracks and renderer framebuffer switches. Pruning removes
+the tile from both artifacts; `skipPartial` changes only the delivery index and
+retains raw coverage in the store, which lets `--reflag` reverse that policy
+without re-warping (see the operator guide).
 
 **Cost.** Far below the legacy per-tile-per-LOD warp. On the 1.94 Gpx
 test sample the pass runs in ~1 min vs ~14 min for legacy analysis;
@@ -154,8 +155,10 @@ source I/O and warp-kernel work remain `O(source pixels)` per pass.
 **The metanode store it emits.** Paged and mmapped, with a directory
 mapping each metatile root block `(lod, x, y)` to a page. Each page
 encodes per-level local quadtrees with uniform-quadrant collapse and a
-5-byte node payload: mesh/watertight flags plus a `half` `minZ`/`maxZ`
-biased outward (conservative for culling). Heights are stored in the
+5-byte node payload: one coverage byte plus a `half` `minZ`/`maxZ`, biased
+outward (conservative for culling). Coverage records the raw analysis result:
+`partial` or `full`; an absent node is `none`. The store has no delivery flags
+such as navtile. Heights are stored in the
 **orthometric** (geoid-shifted SDS) vertical datum (format v2), which
 is what lets flat water and filled ocean collapse to `(0, 0)` and keeps
 the store mmappable — a planetary melown2015 store is ~750 MB even with
@@ -181,9 +184,9 @@ server:
    mask absence, pairing digest against both the `tiling.<rf>` file and
    the cached delivery index, and that tiling coverage reaches the
    configured LOD range).
-2. For each node, serialises `{flags, minZ, maxZ}` plus the
-   derived-at-delivery fields straight into the v6 metatile. **No
-   warp.**
+2. For each node, takes the policy-applied mesh/watertight/navtile flags from
+   the paired delivery index and min/max height from the store, then serialises
+   those with the derived-at-delivery fields into the v6 metatile. **No warp.**
 3. Returns the v6 binary as the HTTP response.
 
 Fields not stored are produced at delivery: the **surrogate** is the

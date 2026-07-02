@@ -1001,10 +1001,10 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
                         .first;
                 }
                 auto &nodeData(ipages->second.node(tileId));
-                nodeData.flags = mnstore::NodeData::mesh;
-                if (watertight) {
-                    nodeData.flags |= mnstore::NodeData::watertight;
-                }
+                nodeData.coverage
+                    = (watertight
+                       ? mnstore::NodeData::Coverage::full
+                       : mnstore::NodeData::Coverage::partial);
                 nodeData.heightRange(grid.minZ.at<float>(j, i)
                                      , grid.maxZ.at<float>(j, i));
             }
@@ -1014,8 +1014,8 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
              * entry would get mesh resurrected by the served-index
              * combiner). Clearing mesh clears watertight with it (a
              * meshless node cannot be watertight), which the empty entry
-             * satisfies by construction. Descendants keep their own
-             * entries, so the subtree stays reachable.
+             * satisfies by construction. Descendants keep their own entries;
+             * validSubtree preserves the branch only while any survive.
              */
             if (config_.skipPartial && !watertight) { continue; }
 
@@ -1069,11 +1069,11 @@ void fsyncPath(const fs::path &path)
     ::close(fd);
 }
 
-/** Atomically publishes a flag tile index and metanode store pair:
- *  stages both to temporary names, pairs the store to the staged index
- *  content (header.pairing filled here), fsyncs and renames both so a
- *  serving daemon sees either the old pair or the new pair. Shared by
- *  the generation and the re-flag paths.
+/** Publishes a flag tile index and metanode store pair. Stages both to
+ *  temporary names, pairs the store to the staged index content
+ *  (header.pairing filled here), fsyncs, and renames them sequentially. The
+ *  digest makes a mixed generation detectable. Shared by the generation and
+ *  re-flag paths.
  */
 void publishPair(const vts::TileIndex &tileIndex
                  , const mnstore::Page::list &pages
@@ -1098,8 +1098,8 @@ void publishPair(const vts::TileIndex &tileIndex
         writer.close();
     }
 
-    // ...fsync them and rename into place so a serving daemon sees
-    // either the old pair or the new pair
+    // ...fsync them and replace both paths. The pairing digest makes the
+    // intermediate mixed generation detectable by readers.
     fsyncPath(tiTmp);
     fsyncPath(storeTmp);
     fs::rename(tiTmp, tileIndexPath);
@@ -1210,6 +1210,13 @@ ReflagStats reflag(const fs::path &dataset
     mnstore::Store store(storePath);
     auto header(store.header());
 
+    if (header.referenceFrame != referenceFrame.id) {
+        LOGTHROW(err2, std::runtime_error)
+            << "Metanode store " << storePath << " belongs to reference "
+            << "frame <" << header.referenceFrame << ">, not <"
+            << referenceFrame.id << ">; refusing to reflag it.";
+    }
+
     // the pair must come from one run: the store is only a trustworthy
     // witness of the index's tiles while their pairing digest agrees
     const auto pairing(mnstore::fileDigest(tileIndexPath));
@@ -1300,8 +1307,8 @@ ReflagStats reflag(const fs::path &dataset
                     }
 
                     const bool partial
-                        ((data.flags & mnstore::NodeData::mesh)
-                         && !(data.flags & mnstore::NodeData::watertight));
+                        (data.coverage
+                         == mnstore::NodeData::Coverage::partial);
                     if (!partial) { continue; }
 
                     if (suppress) {

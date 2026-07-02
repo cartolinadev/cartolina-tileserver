@@ -18,16 +18,16 @@ Dataset preparation and resource setup:
 | Tool | Purpose |
 |---|---|
 | `generatevrtwo` | builds a virtual GDAL dataset with overview pyramids (vrtwo) from an input raster; one resampling per run |
-| `mapproxy-tiling` | surveys a dataset in a reference frame and, with `--apply`, tiles it. The default run is a **dry survey**: it measures GSD, lod range, per-division-node tile ranges and a suggested position (the former `mapproxy-calipers`), prints the report and a resource-config template, and writes nothing. `--gsd <meters>` sets the target floor resolution; `--apply` runs the unified tiling pass (RFC 7) and atomically publishes the paired flag tile index + metanode store (imagery gets the coverage variant: flag index only). `--prune` (default on, DEM) drops tiles finer than the source resolves at their own location; `--skipPartial` suppresses the mesh of partial tiles so a global surface can fill the holes; `--reflag` flips `--skipPartial`/retro-prunes an existing pair in place without re-warping. `--geoidGrid` defaults to the reference frame body's geoid (`""` disables) and must be a PROJ-readable grid — validated at startup, so the registry `.jpg` geoid (not PROJ-readable) aborts rather than baking an unservable store |
-| `mapproxy-setup-resource` | end-to-end resource setup from a raw raster: vrtwo, tiling/store, resource definition, mapproxy registration; metanode-store mode by default for DEMs (`--legacyTiling` for the three-pyramid path); accepts `--gsd <meters>` to set the floor resolution, `--prune` (default on) and `--skipPartial` forwarded to the tiling pass; `--tin.geoidGrid` defaults to the body geoid and is PROJ-validated as in `mapproxy-tiling` |
+| `mapproxy-tiling` | surveys a dataset and, with `--apply`, builds its flag index and metanode store (DEM) or coverage index (imagery); also supports GSD pruning, partial-tile suppression, and offline reflagging. See the [metanode-store operator guide](metanode-store-operations.md) and `--help` |
+| `mapproxy-setup-resource` | end-to-end resource setup from a raw raster: builds the overview pyramid and tiling artifacts, writes the resource definition, and registers it with mapproxy. See the [metanode-store operator guide](metanode-store-operations.md) and `--help` |
 | `mapproxy-rf-mask` | builds reference-frame mask trees (resource `mask` setting) |
 
 Metanode-store diagnostics (RFC 7):
 
 | Tool | Purpose |
 |---|---|
-| `mapproxy-mnstore` | metanode store inspection: `info` (header, packaging, pairing), `dump` (page contents), `selftest` (format round-trip incl. non-default packaging) |
-| `mapproxy-tidiff` | per-tile diff of two vts tile indexes over a lod/tile range; the tiling parity gate |
+| `mapproxy-mnstore` | metanode store inspection: `info`, `dump`, and format `selftest`; see `--help` |
+| `mapproxy-tidiff` | compares two complete VTS tile indexes per tile, with optional LOD and spatial filters; the tiling parity gate |
 | `mapproxy-texel-spike` | harvests per-node texelSize/height/planar-analytic CSV from v6 metatile files (plus child-metatile ids for tree crawling); built for the RFC 7 phase-1 calibration, useful for re-calibration on other bodies and for serve-parity value diffs |
 
 Semantic/mesh utilities:

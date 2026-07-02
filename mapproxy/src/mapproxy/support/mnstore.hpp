@@ -40,11 +40,12 @@ namespace vts = vtslibs::vts;
 
 /** RFC 7 metanode store (rfc-metanode-store.md).
  *
- * A paged, mmappable artifact holding per-tile metanode payload —
- * mesh/watertight flags and the SDS height range — precomputed by the
- * unified tiling pass. It is parallel to and separate from the flag
- * tile index; both are written by one tiling run and bound by a shared
- * pairing digest.
+ * A paged, mmappable artifact holding raw per-tile metadata from the unified
+ * tiling pass: source coverage (absent, partial or full) and the SDS height
+ * range. The paired flag tile index holds the policy-applied delivery view
+ * (mesh/watertight/navtile flags and reachable subtrees) consumed through
+ * served metanodes. Both artifacts are written by one tiling run and bound by
+ * a pairing digest.
  *
  * A page is one metatile delivery unit in the resource's effective
  * packaging (effective metaBinaryOrder/metaDepth): metaDepth level
@@ -63,15 +64,21 @@ namespace vts = vtslibs::vts;
  */
 namespace mnstore {
 
-/** Per-node stored payload. flags == 0 means "no node here".
+/** Raw per-node metadata. Coverage::none means "no node here". Coverage
+ *  describes the source analysis result, not the served delivery policy;
+ *  the paired tile index supplies served flags.
  */
 struct NodeData {
-    enum Flag : std::uint8_t {
-        mesh = 0x01
-        , watertight = 0x02
+    /** Source coverage classification. Values preserve the existing binary
+     *  encoding: partial was mesh, full was mesh|watertight.
+     */
+    enum class Coverage : std::uint8_t {
+        none = 0x00
+        , partial = 0x01
+        , full = 0x03
     };
 
-    std::uint8_t flags;
+    Coverage coverage;
 
     /** Height range in the store's vertical datum (geoid-shifted
      *  SDS), half-float encoded.
@@ -79,12 +86,12 @@ struct NodeData {
     std::uint16_t minZ;
     std::uint16_t maxZ;
 
-    NodeData() : flags(), minZ(), maxZ() {}
+    NodeData() : coverage(Coverage::none), minZ(), maxZ() {}
 
-    explicit operator bool() const { return flags; }
+    explicit operator bool() const { return coverage != Coverage::none; }
 
     bool operator==(const NodeData &other) const {
-        return ((flags == other.flags) && (minZ == other.minZ)
+        return ((coverage == other.coverage) && (minZ == other.minZ)
                 && (maxZ == other.maxZ));
     }
     bool operator!=(const NodeData &other) const {
@@ -174,7 +181,7 @@ public:
      * @param level page level in [0, metaDepth)
      * @param x column within level grid
      * @param y row within level grid
-     * @return node data; flags == 0 if no node
+     * @return node data; coverage is none if no node
      */
     NodeData& node(unsigned int level, unsigned int x, unsigned int y);
     const NodeData& node(unsigned int level, unsigned int x
@@ -183,7 +190,7 @@ public:
     /** Node accessor by global tile id (must belong to this page).
      *
      * @param tileId global tile id
-     * @return node data; flags == 0 if no node
+     * @return node data; coverage is none if no node
      */
     NodeData& node(const vts::TileId &tileId);
     const NodeData& node(const vts::TileId &tileId) const;

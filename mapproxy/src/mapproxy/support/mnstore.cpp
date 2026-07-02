@@ -192,7 +192,7 @@ DirEntry readDirEntry(std::istream &in)
 
 void writeNode(std::ostream &out, const NodeData &node)
 {
-    bin::write(out, node.flags);
+    bin::write(out, std::uint8_t(node.coverage));
     bin::write(out, node.minZ);
     bin::write(out, node.maxZ);
 }
@@ -200,7 +200,8 @@ void writeNode(std::ostream &out, const NodeData &node)
 NodeData readNode(mmapped::MemoryReader &reader)
 {
     NodeData node;
-    node.flags = reader.read<std::uint8_t>();
+    node.coverage
+        = NodeData::Coverage(reader.read<std::uint8_t>());
     node.minZ = reader.read<std::uint16_t>();
     node.maxZ = reader.read<std::uint16_t>();
     return node;

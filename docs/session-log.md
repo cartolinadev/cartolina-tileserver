@@ -5,6 +5,32 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-02 — prune final-range and reflag safety follow-up
+
+Closed three review findings in the merged calipers/tiling workflow. A spatial
+prune can remove every tile at the surveyed maximum LOD; the applied tiling and
+generated resource configuration now use the actual final tile-index maximum,
+so the store validator does not reject an otherwise valid hierarchical
+resource. The dry survey remains an estimate and the apply run reports any
+reduction. `--bottomLod` is now applied to the report and resource template as
+well as the tiling run. Reflagging rejects a store whose header reference frame
+does not match the requested frame before interpreting or rewriting its tiles.
+Documentation now describes pair publication accurately: the two artifacts
+are replaced sequentially, and their digest makes an interrupted mixed
+generation detectable rather than making the two renames atomic.
+`mapproxy-tidiff` now compares the union of both complete indexes by default;
+LOD and tile ranges remain optional filters instead of required operator
+inputs.
+`--reflag --prune false` now fails explicitly with the required re-tiling
+instruction. Documentation distinguishes the authoritative served flags in
+the tile index from the store's raw coverage and min/max height. The existing
+store byte is now named `coverage` (`none`, `partial`, `full`) throughout code
+and diagnostics; its binary values and format are unchanged.
+Review found that `skipPartial` does not materialize a bottom-up-closed
+delivery hierarchy during tiling. Geometry-less leaves must be removed and
+that removal propagated upward before this option is safe for clients; the
+correctness work is tracked in the backlog.
+
 ## 2026-07-02 — merge calipers into mapproxy-tiling; prune, skipPartial, reflag
 
 Folded the `mapproxy-calipers` measurement into `mapproxy-tiling`. The tool now
@@ -25,22 +51,25 @@ Three new capabilities on the DEM/metanode-store path:
   pruned while coarse LODs stay byte-identical; equatorial depth matches
   calipers by construction. Subsumes the per-node-bottom-lod backlog item.
 - `--skipPartial`: clears the flag-index entry of non-watertight tiles (mesh
-  and watertight cleared together — a meshless node cannot be watertight) so a
-  global surface fills the holes. The metanode store still records every tile's
-  true coverage, which makes the choice reversible offline.
+  and watertight cleared together — a meshless node cannot be watertight),
+  sacrificing valid partial content to remove boundary cracks and framebuffer
+  switches. A global base surface makes that tradeoff practical. The metanode
+  store retains the raw `partial` coverage classification, which makes the
+  choice reversible without another warp.
 - `--reflag`: flips `--skipPartial` or retro-prunes an existing pair in place,
-  reading the store as the coverage witness, re-pairing and republishing
-  atomically with no re-warp. skipPartial on→off round-trips the index
-  byte-for-byte (navtile recomputed); retro-prune matches generation-time prune.
+  reading the store as the coverage witness, re-pairing and sequentially
+  republishing both artifacts with no re-warp. skipPartial on→off round-trips
+  the index byte-for-byte (navtile recomputed); retro-prune matches
+  generation-time prune.
 
 Parity: a `--prune false`, no-skip run reproduces the prior artifacts (identical
 flag index and store pairing/pages; only the non-load-bearing sourceHash stamp
 differs). The GSD model is simplified to native `gsd` + derived `targetGsd`
 (dropped `gsdOverride` and the `invGsdScale` concept). `mapproxy-setup-resource`
 gains `--prune`/`--skipPartial`. Serving is unchanged — both options shape only
-the flag index. Live-served a skipPartial resource from the store: a suppressed
-partial tile is delivered as a structural metanode (no geometry, all four
-children reachable), the intended crack-free behaviour.
+the flag index. Serve-time child flags derive reachability from that index;
+the later review above found that this does not replace the required
+tiling-time bottom-up closure.
 
 Moved the tile-index reference from the wiki into these tileserver docs (it is
 server-side). Filed a backlog item: the store serve path must not depend on the

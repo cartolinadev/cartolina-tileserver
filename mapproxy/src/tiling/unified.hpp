@@ -81,10 +81,10 @@ struct UnifiedConfig {
     /** Suppresses the flag tile index entry of every non-watertight
      *  (partial) tile: the served metanode carries no mesh (and no
      *  navtile) there, so a partial tile produces no cracks and forces
-     *  no framebuffer switch; a global surface fills the hole. The
-     *  metanode store still records the tile's true coverage, so the
-     *  suppression is a reversible index-side policy. Mutually
-     *  exclusive with forceWatertight; DEM (store) path only.
+     *  no framebuffer switch. Surviving descendants keep the branch
+     *  reachable; without descendants it ends. The store retains raw partial
+     *  coverage as an offline reflag witness, so the policy is reversible.
+     *  Mutually exclusive with forceWatertight; DEM (store) path only.
      */
     bool skipPartial = false;
 
@@ -146,10 +146,10 @@ generateUnified(const boost::filesystem::path &dataset
                 , const vtslibs::vts::LodTileRange::list &tileRanges
                 , const UnifiedConfig &config);
 
-/** Atomically publishes the paired flag tile index and metanode store:
- *  writes both to temporary names, computes the pairing digest and the
- *  source hash, fsyncs and renames into place so a serving daemon sees
- *  either the old pair or the new pair.
+/** Publishes the paired flag tile index and metanode store. Writes both to
+ *  temporary names, computes the pairing digest and source hash, fsyncs, and
+ *  renames them into place sequentially. The digest makes an interrupted or
+ *  concurrently observed mixed generation detectable by the serve path.
  *
  * @param result unified pass output
  * @param config pass configuration (header metadata source)

@@ -36,7 +36,6 @@
 #include "service/cmdline.hpp"
 
 #include "vts-libs/vts/io.hpp"
-
 #include "mapproxy/support/mnstore.hpp"
 
 namespace po = boost::program_options;
@@ -113,6 +112,17 @@ bool MnStoreTool::help(std::ostream &out, const std::string &what) const
 
 void dumpPage(const mnstore::Header &header, const mnstore::Page &page)
 {
+    const auto coverageName([](mnstore::NodeData::Coverage coverage)
+                            -> const char*
+    {
+        switch (coverage) {
+        case mnstore::NodeData::Coverage::none: return "none";
+        case mnstore::NodeData::Coverage::partial: return "partial";
+        case mnstore::NodeData::Coverage::full: return "full";
+        }
+        return "invalid";
+    });
+
     std::cout << "page " << page.root() << '\n';
     for (unsigned int level(0); level < header.metaDepth; ++level) {
         const auto size(header.levelSize(level));
@@ -125,7 +135,7 @@ void dumpPage(const mnstore::Header &header, const mnstore::Page &page)
                     << "    " << vts::TileId
                     (lod, (page.root().x << level) + x
                      , (page.root().y << level) + y)
-                    << " flags=" << unsigned(node.flags)
+                    << " coverage=" << coverageName(node.coverage)
                     << " minZ=" << node.min()
                     << " maxZ=" << node.max()
                     << '\n';
@@ -202,8 +212,10 @@ public:
 
         if ((hash & 3) == 3) { return node; } // absent
 
-        node.flags = mnstore::NodeData::mesh;
-        if (hash & 4) { node.flags |= mnstore::NodeData::watertight; }
+        node.coverage
+            = ((hash & 4)
+               ? mnstore::NodeData::Coverage::full
+               : mnstore::NodeData::Coverage::partial);
         node.heightRange(-500.0 + (hash % 9000)
                          , -500.0 + (hash % 9000) + (hash % 333));
         return node;

@@ -212,7 +212,7 @@ private:
 
     void writeTemplate(const calipers::Measurement &m) const;
 
-    int apply(const vr::ReferenceFrame &rf, const calipers::Measurement &m);
+    int apply(const vr::ReferenceFrame &rf, calipers::Measurement m);
 
     fs::path input_;
     fs::path dataset_;
@@ -224,6 +224,7 @@ private:
 
     bool apply_ = false;
     bool prune_ = true;
+    bool pruneGiven_ = false;
     bool skipPartial_ = false;
     bool skipPartialGiven_ = false;
     bool reflag_ = false;
@@ -284,13 +285,15 @@ void Tiling::configuration(po::options_description &cmdline
          ->implicit_value(true)
          , "Spatially-varying bottom LOD: drop tiles finer than the target "
          "GSD resolves at their own location (metanode/DEM path only). "
-         "'--prune false' tiles the full lod range everywhere.")
+         "'--prune false' tiles the full lod range everywhere. Reflagging "
+         "can retro-prune with --gsd but cannot undo pruning.")
         ("skipPartial", po::value(&skipPartial_)->default_value(skipPartial_)
          ->implicit_value(true)
-         , "Suppress the mesh of non-watertight (partial) tiles: the served "
-         "surface carries geometry only where a tile is complete, so a "
-         "global surface can fill the holes without cracks. Metanode/DEM "
-         "path only; mutually exclusive with --forceWatertight.")
+         , "Discard non-watertight (partial) tile meshes, removing their "
+         "boundary cracks and framebuffer switches at the cost of their "
+         "valid partial content. Useful when a global base surface can "
+         "replace the whole tile. Metanode/DEM path only; mutually "
+         "exclusive with --forceWatertight.")
         ("forceWatertight", po::value(&unifiedConfig_.forceWatertight)
          ->default_value(unifiedConfig_.forceWatertight)->implicit_value(true)
          , "Treat all partial tiles as watertight (lies about holes).")
@@ -368,8 +371,9 @@ void Tiling::configure(const po::variables_map &vars)
     apply_ = vars.count("apply");
     noexcept_ = vars.count("noexcept");
     reflag_ = vars.count("reflag");
-    // default_value keeps "skipPartial" present in vars even when unset, so
-    // reflag distinguishes an explicit flip request via defaulted()
+    // default_value keeps boolean options present even when unset, so reflag
+    // distinguishes explicit requests via defaulted()
+    pruneGiven_ = vars.count("prune") && !vars["prune"].defaulted();
     skipPartialGiven_ = vars.count("skipPartial")
         && !vars["skipPartial"].defaulted();
 
@@ -433,8 +437,8 @@ bool Tiling::help(std::ostream &out, const std::string &what) const
                 "    --gsd sets the target floor resolution; the floor LODs\n"
                 "    are derived from it. --prune (default on) drops tiles\n"
                 "    that would resolve finer than the source at their own\n"
-                "    location. --skipPartial suppresses the mesh of partial\n"
-                "    tiles so a global surface can fill the holes.\n"
+                "    location. --skipPartial sacrifices partial tile content\n"
+                "    to remove its boundary cracks and framebuffer switches.\n"
                 "\n"
                 );
         return true;
@@ -517,8 +521,7 @@ void Tiling::writeTemplate(const calipers::Measurement &m) const
         "into your mapproxy resource definition directory.";
 }
 
-int Tiling::apply(const vr::ReferenceFrame &rf
-                  , const calipers::Measurement &m)
+int Tiling::apply(const vr::ReferenceFrame &rf, calipers::Measurement m)
 {
     if (m.datasetType == calipers::DatasetType::vector) {
         LOG(err3, log_)
@@ -540,32 +543,48 @@ int Tiling::apply(const vr::ReferenceFrame &rf
         return EXIT_FAILURE;
     }
 
-    auto lodRange(m.lodRange);
     if (unifiedConfig_.coverage) {
         unifiedConfig_.pruneGsd = boost::none;
     } else if (prune_) {
         unifiedConfig_.pruneGsd = m.targetGsd;
         // an operator floor deeper than the measured one must not be
         // pruned away: give the prune that many extra local LODs
-        if (bottomLod_ && (*bottomLod_ > m.lodRange.max)) {
-            unifiedConfig_.pruneExtraLods = *bottomLod_ - m.lodRange.max;
+        vts::Lod measuredMaxLod(0);
+        for (const auto &node : m.nodes) {
+            measuredMaxLod
+                = std::max(measuredMaxLod, node.ranges.lodRange().max);
+        }
+        if (m.lodRange.max > measuredMaxLod) {
+            unifiedConfig_.pruneExtraLods
+                = m.lodRange.max - measuredMaxLod;
         }
     }
     unifiedConfig_.skipPartial = skipPartial_;
 
-    if (bottomLod_) {
-        lodRange.max = std::max(lodRange.max, *bottomLod_);
-    }
-
     const auto tileRanges(m.lodTileRanges());
     auto result(tiling::generateUnified
-                (dataset_, rf, lodRange, tileRanges, unifiedConfig_));
+                (dataset_, rf, m.lodRange, tileRanges, unifiedConfig_));
+
+    if (result.tileIndex.empty()) {
+        LOG(err3, log_) << "Tiling emitted no tiles.";
+        return EXIT_FAILURE;
+    }
+
+    if (unifiedConfig_.pruneGsd
+        && (result.tileIndex.maxLod() < m.lodRange.max))
+    {
+        LOG(info3, log_)
+            << "Spatial prune reduced the final maximum LOD from "
+            << m.lodRange.max << " to " << result.tileIndex.maxLod()
+            << ".";
+        m.lodRange.max = result.tileIndex.maxLod();
+    }
 
     if (unifiedConfig_.coverage) {
         tiling::publishUnifiedIndex(result, output_);
     } else {
         tiling::publishUnified(result, unifiedConfig_, referenceFrame_
-                               , lodRange, tileRanges, output_, storeOutput_);
+                               , m.lodRange, tileRanges, output_, storeOutput_);
     }
 
     writeTemplate(m);
@@ -575,6 +594,20 @@ int Tiling::apply(const vr::ReferenceFrame &rf
 
 int Tiling::runReflag(const vr::ReferenceFrame &rf)
 {
+    if (pruneGiven_ && !prune_) {
+        LOG(err3, log_)
+            << "--reflag cannot undo pruning because pruned store nodes "
+            << "are absent; rerun mapproxy-tiling with --prune false "
+            << "--apply to rebuild the artifacts.";
+        return EXIT_FAILURE;
+    }
+    if (pruneGiven_ && prune_ && !calipersConfig_.gsd) {
+        LOG(err3, log_)
+            << "--reflag --prune true needs --gsd <m> to define the "
+            << "retro-prune threshold.";
+        return EXIT_FAILURE;
+    }
+
     if (!fs::exists(storeOutput_)) {
         LOG(err3, log_)
             << "No metanode store at " << storeOutput_
@@ -632,13 +665,17 @@ int Tiling::runImpl()
     validateGeoidGrid(unifiedConfig_.geoidGrid);
 
     const auto ds(probe(dataset_, vectorResolution_));
-    const auto m(calipers::measure(rf, ds, calipersConfig_));
+    auto m(calipers::measure(rf, ds, calipersConfig_));
 
     if (m.nodes.empty()) {
         LOG(err3, log_)
             << "Dataset does not fall inside any node of reference frame <"
             << referenceFrame_ << ">; nothing to tile.";
         return EXIT_FAILURE;
+    }
+
+    if (bottomLod_) {
+        m.lodRange.max = std::max(m.lodRange.max, *bottomLod_);
     }
 
     report(m, rf, std::cout);

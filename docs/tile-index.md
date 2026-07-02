@@ -64,6 +64,12 @@ cleared with it. `mapproxy-tiling --skipPartial` relies on this — it
 clears the whole value of a partial tile rather than leaving a stray
 flag.
 
+Clearing a tile does not automatically clear its descendants. `skipPartial`
+therefore needs a bottom-up closure pass: retain a geometry-less structural
+node only while it leads to geometry, and remove geometry-less leaves and
+their now-empty ancestors. That pass is not yet implemented; see the open
+correctness item in [the backlog](backlog.md).
+
 The `reference` value reported by `getReference` (line 106) is **not**
 in this byte; it is stored as `flags >> 16`, in memory only, and is
 never serialised.
