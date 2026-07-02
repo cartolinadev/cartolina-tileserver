@@ -28,7 +28,9 @@
  */
 
 #include <iostream>
+#include <map>
 #include <random>
+#include <vector>
 
 #include <boost/optional.hpp>
 
@@ -36,6 +38,7 @@
 #include "service/cmdline.hpp"
 
 #include "vts-libs/vts/io.hpp"
+#include "vts-libs/vts/tileop.hpp"
 #include "mapproxy/support/mnstore.hpp"
 
 namespace po = boost::program_options;
@@ -62,6 +65,12 @@ private:
 
     int info();
     int dump();
+
+    /** Finds full-coverage nodes with only some children retained.
+     * @return EXIT_SUCCESS when no violation is found
+     */
+    int check();
+
     int selftest();
 
     std::string command_;
@@ -75,7 +84,7 @@ void MnStoreTool::configuration(po::options_description &cmdline
 {
     cmdline.add_options()
         ("command", po::value(&command_)->required()
-         , "Command: info, dump, selftest.")
+         , "Command: info, dump, check, selftest.")
         ("store", po::value(&store_)
          , "Path to metanode store file.")
         ("page", po::value<vts::TileId>()
@@ -102,7 +111,11 @@ bool MnStoreTool::help(std::ostream &out, const std::string &what) const
                 "\n"
                 "    mapproxy-mnstore info <store>\n"
                 "    mapproxy-mnstore dump <store> [--page lod-x-y]\n"
+                "    mapproxy-mnstore check <store>\n"
                 "    mapproxy-mnstore selftest\n"
+                "\n"
+                "check finds parents with only some children retained.\n"
+                "It does not support forceWatertight stores.\n"
                 "\n");
         return true;
     }
@@ -184,6 +197,105 @@ int MnStoreTool::dump()
     }
 
     return EXIT_SUCCESS;
+}
+
+int MnStoreTool::check()
+{
+    mnstore::Store store(store_);
+    const auto &header(store.header());
+    const unsigned int deepest(header.metaDepth - 1);
+    const auto rootSize(header.rootSize());
+
+    // level-0 node presence per page: the row of children that hangs
+    // under another page's deepest level
+    std::map<vts::TileId, std::vector<std::uint8_t>> present;
+    for (const auto &root : store.pageIds()) {
+
+        mnstore::Page page;
+        if (!store.read(root, page)) continue;
+
+        auto &cells(present[root]);
+        cells.assign(rootSize * rootSize, 0);
+        for (unsigned int y(0); y < rootSize; ++y) {
+
+            for (unsigned int x(0); x < rootSize; ++x) {
+                if (page.node(0u, x, y)) cells[y * rootSize + x] = 1;
+            }
+        }
+    }
+
+    const std::size_t reportLimit(20);
+    std::size_t checked(0), violations(0);
+
+    for (const auto &root : store.pageIds()) {
+
+        mnstore::Page page;
+        if (!store.read(root, page)) continue;
+
+        for (unsigned int level(0); level < header.metaDepth; ++level) {
+
+            const auto size(header.levelSize(level));
+            const vts::Lod lod(root.lod + level);
+            for (unsigned int y(0); y < size; ++y) {
+
+                for (unsigned int x(0); x < size; ++x) {
+
+                    const auto &node(page.node(level, x, y));
+                    if (node.coverage
+                        != mnstore::NodeData::Coverage::full)
+                        continue;
+                    ++checked;
+
+                    const vts::TileId tileId
+                        (lod, (root.x << level) + x
+                         , (root.y << level) + y);
+
+                    unsigned int count(0);
+                    if (level < deepest) {
+
+                        for (int c(0); c < 4; ++c) {
+
+                            const auto cx(2 * x + (c & 1));
+                            const auto cy(2 * y + (c >> 1));
+                            if (page.node(level + 1, cx, cy)) ++count;
+                        }
+                    }
+
+                    if (level == deepest) {
+
+                        for (const auto &childId : vts::children(tileId)) {
+
+                            const auto childRoot(header.pageId(childId));
+                            const auto ipresent(present.find(childRoot));
+                            if (ipresent == present.end()) continue;
+                            const auto cell
+                                ((childId.y - childRoot.y) * rootSize
+                                 + (childId.x - childRoot.x));
+                            if (ipresent->second[cell]) ++count;
+                        }
+                    }
+
+                    if (!count || (count == 4)) continue;
+
+                    ++violations;
+                    if (violations <= reportLimit)
+                        std::cout
+                            << "full-coverage node " << tileId
+                            << " keeps " << count << " of 4 children\n";
+                }
+            }
+        }
+    }
+
+    if (violations > reportLimit)
+        std::cout << "(" << (violations - reportLimit)
+                  << " more violations not shown)\n";
+
+    std::cout
+        << "checked " << checked << " full-coverage nodes, "
+        << violations << " violation"
+        << ((violations == 1) ? "" : "s") << "\n";
+    return violations ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 /** Fills a synthetic node-payload tree spanning given lod range.
@@ -407,6 +519,7 @@ int MnStoreTool::run()
 {
     if (command_ == "info") { return info(); }
     if (command_ == "dump") { return dump(); }
+    if (command_ == "check") { return check(); }
     if (command_ == "selftest") { return selftest(); }
 
     std::cerr << "unknown command: " << command_ << "\n";

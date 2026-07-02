@@ -43,6 +43,7 @@ Inspect a store with:
 ```sh
 mapproxy-mnstore info <dataset>/metanodes.<rf>
 mapproxy-mnstore dump <dataset>/metanodes.<rf> --page <lod>-<x>-<y>
+mapproxy-mnstore check <dataset>/metanodes.<rf>
 mapproxy-mnstore selftest
 ```
 
@@ -167,6 +168,9 @@ equatorial) coverage is unchanged and only over-generated tiles are removed.
 Coarser LODs are untouched. `--prune false` tiles the full lod range
 everywhere. The prune threshold is tied to `--gsd`. DEM path only.
 
+Verify a pair with `mapproxy-mnstore check <dataset>/metanodes.<rf>`.
+The check does not support stores created with `--forceWatertight`.
+
 The dry survey reports the measurement-derived maximum LOD. The apply pass
 can prune every tile at that deepest level, because only the full spatial pass
 knows the per-tile cutoffs. In that case the completed run reports the lower
@@ -192,8 +196,9 @@ mapproxy-tiling <dataset> <rf> --reflag --gsd 10 --apply
 
 Re-flagging reads the store as the witness of each tile's true coverage,
 rewrites the flag index (and, for prune, drops store nodes too), and
-re-pairs and republishes both artifacts. Without `--apply` it reports the
-counts it would change. It never touches heights or watertight flags.
+re-pairs and republishes both artifacts. Without `--apply` it reports
+the counts it would change. It never touches heights or watertight
+flags.
 Restoring suppressed partial tiles recomputes their navtile bit from the
 dataset, so `--skipPartial true` then `--skipPartial false` reproduces the
 original index exactly.

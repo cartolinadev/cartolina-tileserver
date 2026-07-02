@@ -5,6 +5,12 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-02 — prune siblings together
+
+Pruning and `--reflag` now keep or remove all siblings together. Added
+`mapproxy-mnstore check` to find stores produced by the old per-tile rule;
+the check does not support `--forceWatertight` stores.
+
 ## 2026-07-02 — skipPartial reachability analysis; structural-node extents fix
 
 Re-examined the "geometry-less leaves" P1 backlog item against the whole

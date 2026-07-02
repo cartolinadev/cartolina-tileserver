@@ -134,11 +134,14 @@ node, pass)` warps under `--warpConcurrency` — while reduction and
 emission stay sequential in node order, so output is deterministic.
 
 **Emission policy.** Two options shape which tiles reach the flag index
-during the ascent. `--prune` (default on) drops a tile once its
-subdivision passes the source resolution at its own location — the
-per-tile version of the calipers depth measure, evaluated from the
-node's projection area scale, so a projection's area inflation no longer
-forces over-generation past the source. `--skipPartial` clears the mesh
+during the ascent. `--prune` (default on) drops tiles whose subdivision
+passes the source resolution at their own location — the per-tile
+version of the calipers depth measure, evaluated from the node's
+projection area scale, so a projection's area inflation no longer
+forces over-generation past the source. Pruning keeps or removes all
+siblings together. `mapproxy-mnstore check` finds stores produced by the
+old per-tile rule.
+`--skipPartial` clears the mesh
 flag on non-watertight tiles, sacrificing their valid partial content to
 eliminate boundary cracks and renderer framebuffer switches. Pruning removes
 the tile from both artifacts; `skipPartial` changes only the delivery index and

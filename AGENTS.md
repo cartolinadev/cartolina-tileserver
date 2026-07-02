@@ -58,6 +58,30 @@ Add new entries to `docs/backlog.md` directly below its introduction, newest
 first. Add new entries to `docs/session-log.md` directly below its
 introduction, newest first.
 
+### Documentation style
+
+Keep documentation light, direct, and useful. State the rule, command, or
+result in plain language. Use established terms and define any specialized
+term the reader must know.
+
+Do not use jargon to make a simple point sound important. Do not invent
+smart-sounding terminology, hand-wave over missing evidence, or include
+numbers that cannot be traced to a durable validation record. Do not repeat
+the same rationale across the backlog, session log, operator guide, source
+comments, and command help.
+
+Bad:
+
+> Partially retained siblings leave a permanently delivery-incomplete
+> parent that must render through a materialized coverage mask.
+
+Good:
+
+> Pruning never removes only some of a parent's children.
+
+The bad version hides one simple rule behind invented terms and irrelevant
+implementation detail. The good version gives the reader the fact they need.
+
 This is a public open-source repository. Public documentation, including the
 backlog and session log, may refer to:
 
@@ -205,6 +229,36 @@ The externals under [externals/](externals/) are git submodules (see
   even on feature or other non-main branches.
 
 
+## Code and refactoring philosophy
+
+Common to the entire project (shared with
+[cartolina-js](https://github.com/cartolinadev/cartolina-js/blob/main/AGENTS.md)).
+
+Code is liability. Less code means fewer bugs and easier maintenance. We
+like to delete code.
+
+Complexity that exists for its own sake is a bug. When two approaches
+solve the problem equally well, choose the one with fewer moving parts,
+fewer special cases, and less code. A design that eliminates a concept
+is better than one that models it more precisely.
+
+- **Knuth's rule: premature optimization is the root of all evil.**
+  Do not buy speculative performance with code complexity. Optimize when
+  a measurement shows the need, against that measurement; until then,
+  prefer the simpler design and record the deferred idea in
+  [docs/backlog.md](docs/backlog.md) instead of the codebase.
+- **Write as little code as possible.** Before writing new code, search
+  for existing functionality to reuse — read the docs of the supporting
+  libraries, especially GDAL and PROJ, and dig deep; much of what you
+  need already exists. When duplication is unavoidable, abstract, but
+  only once the duplication is real and the right abstraction is clear.
+- **Dead code removal is encouraged.** When a decision removes a code
+  path's reason to exist, remove the path in the same change; a tool or
+  documented procedure that covers the need beats built-in logic kept
+  "just in case". When in doubt, remove and verify the build and
+  selftests still pass.
+
+
 ## Code style
 
 - Write clean, modern C++17. The build is `-std=c++17` with
@@ -215,6 +269,16 @@ The externals under [externals/](externals/) are git submodules (see
 - No `else if` chains. Prefer independent guard `if`s (each with its own
   reason), early returns, or a `switch` over cascading `else if`. A plain
   `if`/`else` is fine; it's the chained `else if` ladder to avoid.
+- No braces around a single statement: write `if (cond) statement;`, or put
+  the statement alone on the next line when the condition is long. Braces
+  mark multi-statement blocks only.
+- Empty lines inside blocks, the symmetric rule (shared with the
+  [cartolina-js coding style](https://github.com/cartolinadev/cartolina-js/blob/main/AGENTS.md)):
+  when `{` ends a line with preceding content (an `if`, `else`, loop,
+  `switch`, function signature, lambda), place an empty line immediately
+  inside it; when a closing `}` starts a line that continues (`} else {`),
+  place an empty line immediately before it. Omit both when the whole body
+  is a single line. Apply to every new or edited multi-line block.
 - Comment style: javadoc `/** ... */` for function/member documentation;
   `/* ... */` for multi-line non-body notes; `//` for in-body comments. Keep
   it consistent — don't mix styles for the same kind of comment.
@@ -232,13 +296,6 @@ The externals under [externals/](externals/) are git submodules (see
 - Keep changes in the right layer and minimal; don't introduce unrelated
   functionality into a module just because it's a convenient spot. Prefer
   reusing an existing helper over duplicating logic.
-- Knuth's rule: premature optimization is the root of all evil. Do not buy
-  speculative performance with code complexity; optimize when a measurement
-  shows the need, against that measurement, and record deferred optimization
-  ideas in [docs/backlog.md](docs/backlog.md) instead of the codebase.
-- Before reimplementing anything, read the docs of the supporting libraries,
-  especially GDAL and PROJ, and dig deep; much of what you need already
-  exists. Write as little code as possible.
 - Respect module boundaries. The `externals/` submodules (libgeo, libmath,
   vts-libs, ...) are reusable libraries; before adding code to one, ask what
   that module is for. Application-specific logic belongs in the application

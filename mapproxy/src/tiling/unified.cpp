@@ -964,6 +964,20 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
              , rangeExt.ur(1) - (j + 0.5) * ts.height);
     });
 
+    const auto allChildrenCanBePruned([&](auto x, auto y)
+    {
+        for (int c(0); c < 4; ++c) {
+
+            const int i(int(((x >> 1) << 1) + (c & 1))
+                        - int(grid.range.ll(0)));
+            const int j(int(((y >> 1) << 1) + (c >> 1))
+                        - int(grid.range.ll(1)));
+            if (depth <= pruneGrid->floorDepth(tileCenter(i, j)))
+                return false;
+        }
+        return true;
+    });
+
     std::size_t emitted(0), pruned(0);
     for (int j(0); j < grid.height(); ++j) {
         const auto y(grid.range.ll(1) + j);
@@ -973,14 +987,9 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
 
             const auto center(tileCenter(i, j));
 
-            /* Prune: drop a tile once its subdivision has passed the
-             * source resolution at its own location. The tile still fed
-             * its parent through the mip loop (that ran on the full
-             * grid), so parent coverage and watertightness are intact —
-             * this is a delivery cutoff below the useful resolution, not
-             * a hole.
-             */
-            if (pruneGrid && (depth > pruneGrid->floorDepth(center))) {
+            if (pruneGrid && (depth > 0)
+                && allChildrenCanBePruned(x, y))
+            {
                 ++pruned;
                 continue;
             }
@@ -1194,6 +1203,19 @@ math::Extents2 tileExtents(const vr::ReferenceFrame::Division::Node &node
                                          , tileId.x, tileId.y));
 }
 
+/** @return true if all children of the tile's parent can be pruned */
+bool allChildrenCanBePruned(const ReflagNode &ctx
+                            , const vts::TileId &tileId)
+{
+    const auto depth(int(tileId.lod - ctx.node.id.lod));
+    for (const auto &sibling : vts::children(vts::parent(tileId))) {
+
+        const auto center(math::center(tileExtents(ctx.node, sibling)));
+        if (depth <= ctx.pruneGrid->floorDepth(center)) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 ReflagStats reflag(const fs::path &dataset
@@ -1294,10 +1316,10 @@ ReflagStats reflag(const fs::path &dataset
 
                     const auto extents(tileExtents(ctx->node, tileId));
                     const auto center(math::center(extents));
+                    const auto depth(int(tileId.lod - ctx->node.id.lod));
 
-                    if (ctx->pruneGrid
-                        && (int(tileId.lod - ctx->node.id.lod)
-                            > ctx->pruneGrid->floorDepth(center)))
+                    if (ctx->pruneGrid && (depth > 0)
+                        && allChildrenCanBePruned(*ctx, tileId))
                     {
                         // drop from both store and index
                         data = mnstore::NodeData();

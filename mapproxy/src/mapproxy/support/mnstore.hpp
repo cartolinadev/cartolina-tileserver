@@ -195,7 +195,7 @@ public:
     NodeData& node(const vts::TileId &tileId);
     const NodeData& node(const vts::TileId &tileId) const;
 
-    /** @return true if any node is present */
+    /** @return true if no node is present */
     bool empty() const;
 
     bool operator==(const Page &other) const;

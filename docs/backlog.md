@@ -10,6 +10,15 @@ The metanode-store and unified-tiling work in this backlog is specified by
 
 New entries are added directly below this introduction, newest first.
 
+## P1 CORRECTNESS: prune must not split child sets
+
+**Opened:** 2026-07-02
+**Status:** implemented 2026-07-02 (complete child-set pruning in
+generation and `--reflag`; `mapproxy-mnstore check` validation).
+
+Pruning and `--reflag` now keep or remove all siblings together;
+`mapproxy-mnstore check` finds stores produced by the old per-tile rule.
+
 ## P1 CORRECTNESS: `skipPartial` must remove geometry-less leaves
 
 **Opened:** 2026-07-02
