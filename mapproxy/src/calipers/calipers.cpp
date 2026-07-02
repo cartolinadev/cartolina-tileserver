@@ -123,8 +123,8 @@ public:
         step.height /= steps.height;
     }
 
-    bool run(double targetGsd, double invGsdScale, double tileFractionLimit) {
-        if (sample(targetGsd, invGsdScale, tileFractionLimit)) {
+    bool run(double nativeGsd, double targetGsd, double tileFractionLimit) {
+        if (sample(nativeGsd, targetGsd, tileFractionLimit)) {
             refine();
             minLod();
             return true;
@@ -168,7 +168,7 @@ private:
         return c;
     }
 
-    bool sample(double targetGsd, double invGsdScale, double tileFractionLimit);
+    bool sample(double nativeGsd, double targetGsd, double tileFractionLimit);
     void refine();
     void minLod();
 
@@ -203,7 +203,7 @@ vts::TileRange Node::globalRange() const
                          , tileRange_.ur(0) + lch.x, tileRange_.ur(1) + lch.y);
 }
 
-bool Node::sample(double targetGsd, double invGsdScale, double tileFractionLimit)
+bool Node::sample(double nativeGsd, double targetGsd, double tileFractionLimit)
 {
     const auto &nodeId(node.nodeId());
     const auto paneSize(math::size(node.extents()));
@@ -271,13 +271,17 @@ bool Node::sample(double targetGsd, double invGsdScale, double tileFractionLimit
     localLod = computed;
     lod = nodeId.lod + computed;
 
-    // set source block size limit 1/4 of source tile size
+    // Border-refinement stop size, in source pixels: a fraction
+    // (1/tileFractionLimit) of a tile, expressed in the source's own
+    // resolution. One tile pixel spans targetGsd/nativeGsd source
+    // pixels, so a whole tile edge (tileSize pixels) scales by that.
+    const auto srcPixelsPerTilePixel(targetGsd / nativeGsd);
     sourceBlockLimit.width
         = (vr::BoundLayer::tileSize().width
-           / (invGsdScale * tileFractionLimit));
+           * srcPixelsPerTilePixel / tileFractionLimit);
     sourceBlockLimit.height
         = (vr::BoundLayer::tileSize().height
-           / (invGsdScale * tileFractionLimit));
+           * srcPixelsPerTilePixel / tileFractionLimit);
 
     // done
     return true;
@@ -539,24 +543,16 @@ Measurement measure(const vtslibs::registry::ReferenceFrame &referenceFrame
 
     m.gsd = computeGsd(dataset, referenceFrame);
 
-    // inverse GSD scale: an explicit target floor GSD (applies to any dataset
-    // type) overrides the legacy DEM-only demToOphotoScale
-    const double invGsdScale
+    // target floor GSD the finest LOD must resolve: an explicit --gsd (any
+    // dataset type) wins; otherwise native, scaled finer for a DEM by the
+    // legacy demToOphotoScale (a DEM is typically served at a finer mesh
+    // than its own sample spacing).
+    m.targetGsd =
         (config.gsd
-         ? (m.gsd / *config.gsd)
+         ? *config.gsd
          : ((m.datasetType == DatasetType::dem)
-            ? config.demToOphotoScale
-            : 1.0));
-
-    // record the effective floor GSD whenever it differs from native
-    if (invGsdScale != 1.0) {
-        m.gsdOverride = m.gsd / invGsdScale;
-    }
-
-    // effective target floor GSD the finest LOD must resolve; the per-node depth
-    // needs only this. invGsdScale is passed on to the nodes for the
-    // source-pixel-space sourceBlockLimit.
-    const double targetGsd(m.gsd / invGsdScale);
+            ? (m.gsd / config.demToOphotoScale)
+            : m.gsd));
 
     // division of source dataset
     math::Size2 steps(255, 255);
@@ -569,7 +565,7 @@ Measurement measure(const vtslibs::registry::ReferenceFrame &referenceFrame
     for (std::size_t nodeIndex = 0; nodeIndex < rfNodes.size(); ++nodeIndex) {
         auto node(std::make_shared<Node>(dataset, rfNodes[nodeIndex], steps));
 
-        if (node->run(targetGsd, invGsdScale, config.tileFractionLimit)) {
+        if (node->run(m.gsd, m.targetGsd, config.tileFractionLimit)) {
             UTILITY_OMP(critical(calipers))
                 nodes.push_back(node);
         }

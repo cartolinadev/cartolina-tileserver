@@ -81,78 +81,103 @@ replaces the deprecated DEM-only `demToOphotoScale` setting.
 
 ### Manual creation
 
-Build one vrtwo pyramid and run calipers:
+Build one vrtwo pyramid, then survey and tile with a single command —
+`mapproxy-tiling` measures the dataset itself, so there are no lod/tile ranges
+to transcribe:
 
 ```sh
 generatevrtwo <input> <dataset>/vrtwo.cubicspline \
     --resampling cubicspline
 ln -s vrtwo.cubicspline/dataset <dataset>/dem
 
-mapproxy-calipers <dataset>/dem --referenceFrame <rf>
+# dry survey: measure and print the report + a resource-config template
+mapproxy-tiling <dataset> <rf> --gsd 10 --geoidGrid egm96_15.gtx
+
+# once the survey looks right, tile and publish the paired artifacts
+mapproxy-tiling <dataset> <rf> --gsd 10 --geoidGrid egm96_15.gtx --apply
 ```
 
-Add `--gsd <meters>` to the calipers command when the resource requires an
-explicit floor resolution.
-
-For this example output:
-
-```text
-gsd: 92.4552
-gsdOverride: 10
-range<pseudomerc>: 1,15 15/0,0:16383,16383
-range<steres-wgs84>: 2,14 14/10979,2787:13596,5404
-range<steren-wgs84>: 2,14 14/2787,10979:5404,13596
-range: 1,15 0,0:1,1
-```
-
-run:
-
-```sh
-mapproxy-tiling <dataset> <rf> \
-    --lodRange 1,15 \
-    --tileRange 15/0,0:16383,16383 \
-    --tileRange 14/10979,2787:13596,5404 \
-    --tileRange 14/2787,10979:5404,13596 \
-    --geoidGrid egm96_15.gtx
-```
-
-The translation rules are:
-
-- Each `range<SRS>:` line supplies one `--tileRange`. Copy its second token,
-  including the `LOD/` prefix and the colon between corners.
-- The final `range:` line supplies the resource definition's `lodRange` and
-  `tileRange`.
-- `--lodRange` is the union of the first tokens from all `range<SRS>:`
-  lines. The example union is `1,15`.
-- The LOD in `--tileRange LOD/...` anchors the measured footprint. Every
-  spatial-division node descends to the global `--lodRange.max`.
-
-For example, do not copy both tokens from a `range<SRS>:` line:
-
-```text
-# Wrong: the leading 14 came from the 2,14 token
---tileRange 14 14/10979,2787:13596,5404
-
-# Correct
---tileRange 14/10979,2787:13596,5404
-```
-
-By default, `mapproxy-tiling` writes:
+The default run is a **dry survey**: it measures native and target GSD,
+per-division-node lod/tile ranges, and a suggested position, prints them, and
+emits a resource-config template — writing nothing. Review it, then add
+`--apply` to run the four filter passes and atomically publish:
 
 ```text
 <dataset>/tiling.<rf>
 <dataset>/metanodes.<rf>
 ```
 
-`--output` and `--store` override these paths. `--legacy` writes only the
-legacy flag index. A successful unified run reports progress for four
-filter passes and ends with `I4 Done.`.
+`--output` and `--store` override those paths. `--resourceConfig <path>` sets
+the template destination (`-` means stdout; default is stdout on a dry run and
+`<dataset>/resource.<rf>.json` with `--apply`). The template carries no
+credits and a `TEMPLATE` comment: fill in attribution and the dataset path,
+then copy it into a resource definition directory. A successful unified run
+reports progress for the filter passes and ends with `I4 Done.`.
 
-Write the resource definition using the final calipers `range:` line.
+`--gsd <meters>` sets the target floor resolution (highest LOD). A value finer
+than the source deepens `lodRange.max`; a coarser value caps it. It applies to
+DEM and imagery alike and replaces the deprecated DEM-only `demToOphotoScale`.
+Omitting it uses the native GSD (scaled finer for a DEM by `demToOphotoScale`).
+
 Changing `lodRange.max` requires another tiling run for the complete new
 range. On a live reload, a replacement that asks for an uncovered LOD fails
 to prepare and the previous ready revision remains active. On a fresh start,
 the resource remains unavailable until its definition and artifacts match.
+
+#### Suppressing partial tiles (`--skipPartial`)
+
+`--skipPartial` clears the mesh flag on every non-watertight (partial) tile,
+so the served surface carries geometry only where a tile fully covers its
+extent. Partial tiles cause visible cracks and force renderer framebuffer
+switches; a local detail surface is normally used over a global base surface
+that can fill the gaps, so suppressing partial meshes is often the right
+operator choice. A node may then have no mesh while its children do — that is
+legitimate: the subtree stays reachable and mesh requests for the suppressed
+tile 404. The metanode store still records every partial tile's true coverage,
+so the choice is reversible offline (see [Re-flagging](#re-flagging-an-existing-pair-reflag)).
+DEM path only; mutually exclusive with `--forceWatertight`.
+
+#### Spatial prune (`--prune`, default on)
+
+`--prune` drops tiles that would subdivide finer than the source resolves at
+their own location. Where a projection inflates area, a same-LOD tile covers
+less ground, so a global lod range otherwise keeps descending past the source
+resolution; the prune stops that per location. At a node centre the cutoff
+equals the depth `mapproxy-calipers` measured, so low-distortion (e.g.
+equatorial) coverage is unchanged and only over-generated tiles are removed.
+Coarser LODs are untouched. `--prune false` tiles the full lod range
+everywhere. The prune threshold is tied to `--gsd`. DEM path only.
+
+#### Re-flagging an existing pair (`--reflag`)
+
+`--reflag` changes the partial-tile or prune policy of an existing pair
+in place, without re-running the warps:
+
+```sh
+# suppress partial meshes on an already-tiled resource (dry report first)
+mapproxy-tiling <dataset> <rf> --reflag --skipPartial true
+mapproxy-tiling <dataset> <rf> --reflag --skipPartial true --apply
+
+# restore them
+mapproxy-tiling <dataset> <rf> --reflag --skipPartial false --apply
+
+# retro-prune to a target floor GSD
+mapproxy-tiling <dataset> <rf> --reflag --gsd 10 --apply
+```
+
+Re-flagging reads the store as the witness of each tile's true coverage,
+rewrites the flag index (and, for prune, drops store nodes too), and
+re-pairs and atomically republishes both artifacts. Without `--apply` it
+reports the counts it would change. It never touches heights or watertight
+flags. Restoring suppressed partial tiles recomputes their navtile bit from
+the dataset, so `--skipPartial true` then `--skipPartial false` reproduces the
+original index exactly.
+
+Retro-prune only removes tiles; it cannot add resolution back (the store nodes
+are gone). To make a pruned resource deeper again, re-tile with `--apply`.
+
+A running mapproxy notices the new pairing on its next resource prepare and
+adopts the republished pair (see [Force resource preparation](#3-force-resource-preparation)).
 
 #### Vertical datum inputs
 
@@ -238,17 +263,16 @@ dataset. Each reference frame has its own `tiling.<rf>` and
 
 ### 2. Generate the new pair
 
-Use the original ranges, normally recorded in the dataset README or in
-saved calipers output:
+Use the original floor resolution, normally recorded in the dataset README or
+the resource definition:
 
 ```sh
-mapproxy-tiling <dataset> <rf> \
-    --lodRange <min,max> \
-    --tileRange <lod>/<xmin,ymin:xmax,ymax> \
-    --geoidGrid egm96_15.gtx
+mapproxy-tiling <dataset> <rf> --gsd <meters> --geoidGrid egm96_15.gtx --apply
 ```
 
-This replaces `tiling.<rf>` and creates `metanodes.<rf>`.
+`mapproxy-tiling` measures the ranges itself; pass the same `--gsd` the
+resource was built with (omit it to reuse the native resolution). This
+replaces `tiling.<rf>` and creates `metanodes.<rf>`.
 
 Inspect the store and compare the old and new flag indexes:
 

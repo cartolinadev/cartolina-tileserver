@@ -78,6 +78,31 @@ struct UnifiedConfig {
      */
     bool forceWatertight = false;
 
+    /** Suppresses the flag tile index entry of every non-watertight
+     *  (partial) tile: the served metanode carries no mesh (and no
+     *  navtile) there, so a partial tile produces no cracks and forces
+     *  no framebuffer switch; a global surface fills the hole. The
+     *  metanode store still records the tile's true coverage, so the
+     *  suppression is a reversible index-side policy. Mutually
+     *  exclusive with forceWatertight; DEM (store) path only.
+     */
+    bool skipPartial = false;
+
+    /** Spatially-varying bottom LOD: when set, a tile is dropped once
+     *  its subdivision passes the source resolution at its own location
+     *  — the target floor GSD (meters) the finest useful tile resolves.
+     *  Unset means no prune (tile down to the full analyzed lod range
+     *  everywhere). DEM (store) path only.
+     */
+    boost::optional<double> pruneGsd;
+
+    /** Extra local LODs added to the per-tile prune floor depth (a
+     *  resolution margin, and the room an operator --bottomLod override
+     *  needs below the measured floor). 0 = prune exactly at
+     *  source-native resolution.
+     */
+    int pruneExtraLods = 0;
+
     /** Coverage (mask-only) mode for non-DEM datasets (imagery): runs
      *  only the two mask filter passes to derive existence and
      *  watertightness, skips the elevation passes and the metanode
@@ -151,6 +176,55 @@ void publishUnified(const UnifiedResult &result
  */
 void publishUnifiedIndex(const UnifiedResult &result
                          , const boost::filesystem::path &tileIndexPath);
+
+/** Re-flagging request over an existing paired flag index + metanode
+ *  store. The store is the read-only witness of every tile's true
+ *  coverage; the flip rewrites the flag index (and, for prune, drops
+ *  store nodes) and re-pairs the pair — no warps.
+ */
+struct ReflagConfig {
+    /** Set = target skipPartial state: true suppresses the mesh of
+     *  partial tiles, false restores it (navtile recomputed).
+     */
+    boost::optional<bool> skipPartial;
+
+    /** Set = retro-prune to this target floor GSD (meters per pixel).
+     *  Only removes tiles finer than the source resolves; it cannot add
+     *  resolution back (re-tile for that).
+     */
+    boost::optional<double> pruneGsd;
+
+    int pruneExtraLods = 0;
+
+    /** Samples per tile edge for the navtile-eligibility measure used
+     *  when restoring a suppressed partial tile.
+     */
+    int tileSampling = 128;
+};
+
+struct ReflagStats {
+    std::size_t total = 0;      // real store nodes examined
+    std::size_t suppressed = 0; // partial index entries cleared
+    std::size_t restored = 0;   // partial index entries set
+    std::size_t pruned = 0;     // nodes dropped from store and index
+};
+
+/** Re-flags an existing paired flag index + metanode store in place.
+ *
+ * @param dataset DEM dataset (needed only to restore navtile bits)
+ * @param referenceFrame reference frame (store header names it)
+ * @param tileIndexPath paired flag tile index path
+ * @param storePath paired metanode store path
+ * @param config the flip to apply
+ * @param apply write the re-paired artifacts (false = report only)
+ * @return counts of the planned/applied changes
+ */
+ReflagStats reflag(const boost::filesystem::path &dataset
+                   , const vtslibs::registry::ReferenceFrame &referenceFrame
+                   , const boost::filesystem::path &tileIndexPath
+                   , const boost::filesystem::path &storePath
+                   , const ReflagConfig &config
+                   , bool apply);
 
 } // namespace tiling
 

@@ -428,6 +428,12 @@ metatileFromDemImpl(const vts::TileId &tileId, Sink &sink, Arsenal &arsenal
                 node.heightRange.max = std::ceil(heightRange.max);
 
                 if (!triangleCount) {
+                    /* Tiling coverage and this sampling pass can disagree,
+                     * leaving a watertight flag on a geometry-less metanode.
+                     * Store-backed delivery preserves the
+                     * watertight-implies-geometry invariant. Retirement of
+                     * legacy warp generation removes this discrepancy.
+                     */
                     // reset content flags
                     node.geometry(geometry = false);
                     node.navtile(navtile = false);

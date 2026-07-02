@@ -27,10 +27,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <cmath>
 #include <condition_variable>
 #include <deque>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -55,6 +57,7 @@
 #include "geo/geodataset.hpp"
 #include "geo/csconvertor.hpp"
 #include "geo/srsdef.hpp"
+#include "geo/srsfactors.hpp"
 
 #include "vts-libs/vts/tileop.hpp"
 #include "vts-libs/vts/io.hpp"
@@ -306,6 +309,139 @@ private:
     geo::GeoTransform gt_;
 };
 
+/** Per-node spatial floor-depth lookup for the prune (spatially-varying
+ *  bottom LOD). Mirrors mapproxy-calipers' Node::sample depth formula
+ *
+ *      bestLod(p) = 0.5 * log2( paneArea / (arealScale(p) * tileArea * G^2) )
+ *
+ *  but evaluates the SRS areal scale factor per tile centre rather than
+ *  only at the node centre. Where the projection inflates area the same
+ *  tile covers less ground, so fewer LODs resolve the source there; the
+ *  prune drops tiles below that per-location floor. At the node centre
+ *  the depth equals calipers' own localLod, so the coverage a calipers
+ *  measurement promises is preserved.
+ *
+ *  The scale is sampled on a fixed lattice and log2(arealScale) is
+ *  bilinearly interpolated (bestLod is linear in it, so ceil is stable).
+ *  A denser adaptive lattice is a deliberately deferred optimization.
+ */
+class GsdGrid {
+public:
+    static const int lattice = 64; // (lattice + 1)^2 SrsFactors samples
+
+    GsdGrid(const geo::SrsDefinition &srsDef, const math::Extents2 &extents
+            , double gsd, int extraLods)
+        : extents_(extents), extraLods_(extraLods)
+        , log2scale_((lattice + 1) * (lattice + 1)
+                     , std::numeric_limits<double>::quiet_NaN())
+    {
+        const auto paneSize(math::size(extents));
+
+        // depth constant: bestLod(p) = depthConst_ - 0.5*log2(arealScale(p))
+        depthConst_ = 0.5 * std::log2
+            (paneSize.width * paneSize.height
+             / (vr::BoundLayer::tileArea() * gsd * gsd));
+
+        geo::SrsFactors factors(srsDef);
+        for (int j(0); j <= lattice; ++j) {
+            const double y(extents.ll(1) + paneSize.height * j / lattice);
+            for (int i(0); i <= lattice; ++i) {
+                const double x(extents.ll(0) + paneSize.width * i / lattice);
+                try {
+                    const auto scale
+                        (factors(math::Point2(x, y)).arealScaleFactor);
+                    if (scale > 0.0) {
+                        log2scale_[j * (lattice + 1) + i]
+                            = std::log2(scale);
+                        anyValid_ = true;
+                    }
+                } catch (const std::exception&) {
+                    // out-of-domain sample (e.g. past a pole): left NaN,
+                    // resolved to the nearest valid sample at lookup
+                }
+            }
+        }
+    }
+
+    bool anyValid() const { return anyValid_; }
+
+    /** Local floor depth (relative to the node root) at an SDS point. */
+    int floorDepth(const math::Point2 &p) const {
+        const auto bestLod(depthConst_ - 0.5 * log2scaleAt(p));
+        if (!(bestLod > 0.0)) { return extraLods_; }
+        return int(std::ceil(bestLod)) + extraLods_;
+    }
+
+    /** Maximum floor depth over the sampled lattice: the deepest LOD
+     *  any tile of the node can survive the prune, hence the node's
+     *  leaf-LOD cap.
+     */
+    int maxFloorDepth() const {
+        double minLog2(std::numeric_limits<double>::infinity());
+        for (const auto v : log2scale_) {
+            if (!std::isnan(v)) { minLog2 = std::min(minLog2, v); }
+        }
+        if (!std::isfinite(minLog2)) { return extraLods_; }
+        const auto bestLod(depthConst_ - 0.5 * minLog2);
+        if (!(bestLod > 0.0)) { return extraLods_; }
+        return int(std::ceil(bestLod)) + extraLods_;
+    }
+
+private:
+    /** Bilinearly interpolated log2(arealScale) at an SDS point,
+     *  falling back to the nearest valid lattice sample when the
+     *  interpolation stencil hits an out-of-domain (NaN) corner.
+     */
+    double log2scaleAt(const math::Point2 &p) const {
+        const auto size(math::size(extents_));
+        double fx((size.width > 0.0)
+                  ? (p(0) - extents_.ll(0)) / size.width * lattice : 0.0);
+        double fy((size.height > 0.0)
+                  ? (p(1) - extents_.ll(1)) / size.height * lattice : 0.0);
+        fx = std::min(std::max(fx, 0.0), double(lattice));
+        fy = std::min(std::max(fy, 0.0), double(lattice));
+        const int col(std::min(int(fx), lattice - 1));
+        const int row(std::min(int(fy), lattice - 1));
+        const double dx(fx - col), dy(fy - row);
+
+        const auto at([&](int c, int r) -> double
+        {
+            return log2scale_[r * (lattice + 1) + c];
+        });
+        const double v00(at(col, row)), v10(at(col + 1, row));
+        const double v01(at(col, row + 1)), v11(at(col + 1, row + 1));
+
+        if (std::isnan(v00) || std::isnan(v10)
+            || std::isnan(v01) || std::isnan(v11))
+        {
+            return nearestValid(fx, fy);
+        }
+        const double bottom(v00 * (1.0 - dx) + v10 * dx);
+        const double top(v01 * (1.0 - dx) + v11 * dx);
+        return bottom * (1.0 - dy) + top * dy;
+    }
+
+    double nearestValid(double fx, double fy) const {
+        double best(std::numeric_limits<double>::quiet_NaN());
+        double bestD2(std::numeric_limits<double>::infinity());
+        for (int j(0); j <= lattice; ++j) {
+            for (int i(0); i <= lattice; ++i) {
+                const auto v(log2scale_[j * (lattice + 1) + i]);
+                if (std::isnan(v)) { continue; }
+                const double d2((i - fx) * (i - fx) + (j - fy) * (j - fy));
+                if (d2 < bestD2) { bestD2 = d2; best = v; }
+            }
+        }
+        return best;
+    }
+
+    math::Extents2 extents_;
+    int extraLods_;
+    double depthConst_ = 0.0;
+    bool anyValid_ = false;
+    std::vector<double> log2scale_;
+};
+
 /** Value transform of stored heights: the optional (monotone) height
  *  function, applied post-aggregation per tile (RFC 7 section 4.2).
  *  No datum conversion happens here: the store keeps the
@@ -524,9 +660,11 @@ private:
     struct NodeJob {
         vr::ReferenceFrame::Division::Node node;
         geo::SrsDefinition srsDef;
+        vts::Lod leafLod;
         vts::TileRange leafRange;
         math::Extents2 extents;
         math::Size2i gridSize;
+        std::shared_ptr<GsdGrid> pruneGrid;
         std::future<cv::Mat> maskMin, maskMax, elevMin, elevMax;
     };
 
@@ -537,7 +675,8 @@ private:
 
     void emit(const vr::ReferenceFrame::Division::Node &node
               , const geo::SrsDefinition &srsDef
-              , vts::Lod lod, const LodGrid &grid);
+              , vts::Lod lod, const LodGrid &grid
+              , const GsdGrid *pruneGrid);
 
     const vr::ReferenceFrame &referenceFrame_;
     const vts::LodRange lodRange_;
@@ -557,7 +696,32 @@ void UnifiedPass::prepareNode
     (const vr::ReferenceFrame::Division::Node &node
      , WarpSlots &slots, std::deque<NodeJob> &jobs)
 {
-    const auto leafLod(lodRange_.max);
+    if (node.id.lod > lodRange_.max) { return; }
+    const auto srsDefinition(vr::system.srs(node.srs).srsDef);
+
+    /* Prune: build the node's spatial floor-depth grid and cap the leaf
+     * LOD at the deepest depth any tile of the node survives. A node
+     * whose projection does not inflate area keeps the full analyzed
+     * depth; where it does inflate, the cap is shallower and the warp
+     * grid shrinks with it.
+     */
+    std::shared_ptr<GsdGrid> pruneGrid;
+    auto leafLod(lodRange_.max);
+    if (config_.pruneGsd) {
+        pruneGrid = std::make_shared<GsdGrid>
+            (srsDefinition, node.extents, *config_.pruneGsd
+             , config_.pruneExtraLods);
+        if (pruneGrid->anyValid()) {
+            const auto capped(node.id.lod + pruneGrid->maxFloorDepth());
+            leafLod = std::min<vts::Lod>(leafLod, capped);
+        } else {
+            LOG(warn3)
+                << "Unified pass: division node " << node.id
+                << " has no valid projection scale samples; prune "
+                "disabled for it.";
+            pruneGrid.reset();
+        }
+    }
     if (node.id.lod > leafLod) { return; }
 
     // node subtree range at leaf lod
@@ -574,7 +738,9 @@ void UnifiedPass::prepareNode
     jobs.emplace_back();
     auto &job(jobs.back());
     job.node = node;
-    job.srsDef = vr::system.srs(node.srs).srsDef;
+    job.srsDef = srsDefinition;
+    job.leafLod = leafLod;
+    job.pruneGrid = pruneGrid;
     job.leafRange = *leafRange;
     job.extents = rangeExtents(node, leafLod, *leafRange);
     job.gridSize = math::Size2i
@@ -637,8 +803,9 @@ void UnifiedPass::reduceNode(NodeJob &job)
 {
     const auto &node(job.node);
     const auto &srsDef(job.srsDef);
-    const auto leafLod(lodRange_.max);
+    const auto leafLod(job.leafLod);
     const auto &leafRange(job.leafRange);
+    const auto *pruneGrid(job.pruneGrid.get());
 
     const auto maskMin(job.maskMin.get());
     const auto maskMax(job.maskMax.get());
@@ -700,7 +867,7 @@ void UnifiedPass::reduceNode(NodeJob &job)
     }
 
     // bottom-up 2x2 min/max mip loop with interleaved emission
-    emit(node, srsDef, leafLod, leaf);
+    emit(node, srsDef, leafLod, leaf, pruneGrid);
 
     auto child(std::move(leaf));
     const auto minLod(std::max(lodRange_.min, node.id.lod));
@@ -765,7 +932,7 @@ void UnifiedPass::reduceNode(NodeJob &job)
             }
         }
 
-        emit(node, srsDef, lod, parent);
+        emit(node, srsDef, lod, parent, pruneGrid);
         child = std::move(parent);
     }
 
@@ -775,50 +942,57 @@ void UnifiedPass::reduceNode(NodeJob &job)
 
 void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
                        , const geo::SrsDefinition &srsDef
-                       , vts::Lod lod, const LodGrid &grid)
+                       , vts::Lod lod, const LodGrid &grid
+                       , const GsdGrid *pruneGrid)
 {
     // navtile eligibility: replicate the legacy rule — the navtile
     // flag survives while a tileSampling-per-tile warp still samples
     // coarser than the source (truescale < 1)
     const TrueScale trueScale(dem_, srsDef);
-    const auto count(vts::TileRange::value_type(1) << (lod - node.id.lod));
+    const auto depth(lod - node.id.lod);
+    const auto count(vts::TileRange::value_type(1) << depth);
     const auto nodeSize(math::size(node.extents));
     const math::Size2f ts(nodeSize.width / count, nodeSize.height / count);
     const math::Size2f samplePx(ts.width / config_.tileSampling
                                 , ts.height / config_.tileSampling);
     const auto rangeExt(rangeExtents(node, lod, grid.range));
 
-    const auto navtileEligible([&](int i, int j) -> bool
+    const auto tileCenter([&](int i, int j) -> math::Point2
     {
-        const math::Point2 center
+        return math::Point2
             (rangeExt.ll(0) + (i + 0.5) * ts.width
              , rangeExt.ur(1) - (j + 0.5) * ts.height);
-        return trueScale(center, samplePx) < 1.0;
     });
 
-    std::size_t emitted(0);
+    std::size_t emitted(0), pruned(0);
     for (int j(0); j < grid.height(); ++j) {
         const auto y(grid.range.ll(1) + j);
         for (int i(0); i < grid.width(); ++i) {
             const auto x(grid.range.ll(0) + i);
             if (!grid.exists.at<std::uint8_t>(j, i)) { continue; }
 
-            const vts::TileId tileId(lod, x, y);
+            const auto center(tileCenter(i, j));
 
-            TiFlag::value_type flags(TiFlag::mesh);
-            if (grid.watertight.at<std::uint8_t>(j, i)) {
-                flags |= TiFlag::watertight;
+            /* Prune: drop a tile once its subdivision has passed the
+             * source resolution at its own location. The tile still fed
+             * its parent through the mip loop (that ran on the full
+             * grid), so parent coverage and watertightness are intact —
+             * this is a delivery cutoff below the useful resolution, not
+             * a hole.
+             */
+            if (pruneGrid && (depth > pruneGrid->floorDepth(center))) {
+                ++pruned;
+                continue;
             }
-            // navtile is a surface (DEM) concept; imagery has none, so
-            // coverage mode never sets it
-            if (!config_.coverage && navtileEligible(i, j)) {
-                flags |= TiFlag::navtile;
-            }
-            tileIndex_.set(tileId, flags);
+
+            const vts::TileId tileId(lod, x, y);
+            const bool watertight
+                (grid.watertight.at<std::uint8_t>(j, i));
 
             // coverage mode emits the flag index only, no store
             if (!config_.coverage) {
-                // store page payload
+                // store page payload records the tile's true coverage
+                // (watertight independent of any index suppression)
                 const auto pageId(storeHeader_.pageId(tileId));
                 auto ipages(pages_.find(pageId));
                 if (ipages == pages_.end()) {
@@ -828,18 +1002,41 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
                 }
                 auto &nodeData(ipages->second.node(tileId));
                 nodeData.flags = mnstore::NodeData::mesh;
-                if (grid.watertight.at<std::uint8_t>(j, i)) {
+                if (watertight) {
                     nodeData.flags |= mnstore::NodeData::watertight;
                 }
                 nodeData.heightRange(grid.minZ.at<float>(j, i)
                                      , grid.maxZ.at<float>(j, i));
             }
+
+            /* skipPartial: a non-watertight tile carries no mesh in the
+             * served index — its whole flag entry stays 0 (a navtile-only
+             * entry would get mesh resurrected by the served-index
+             * combiner). Clearing mesh clears watertight with it (a
+             * meshless node cannot be watertight), which the empty entry
+             * satisfies by construction. Descendants keep their own
+             * entries, so the subtree stays reachable.
+             */
+            if (config_.skipPartial && !watertight) { continue; }
+
+            TiFlag::value_type flags(TiFlag::mesh);
+            if (watertight) { flags |= TiFlag::watertight; }
+            // navtile is a surface (DEM) concept; imagery has none, so
+            // coverage mode never sets it
+            if (!config_.coverage
+                && (trueScale(center, samplePx) < 1.0))
+            {
+                flags |= TiFlag::navtile;
+            }
+            tileIndex_.set(tileId, flags);
             ++emitted;
         }
     }
 
     LOG(info3)
         << "Unified pass: lod " << lod << ": emitted " << emitted
+        << (pruned ? str(boost::format(", pruned %d") % pruned)
+            : std::string())
         << " tiles in range " << grid.range << ".";
 }
 
@@ -872,54 +1069,32 @@ void fsyncPath(const fs::path &path)
     ::close(fd);
 }
 
-} // namespace
-
-void publishUnified(const UnifiedResult &result
-                    , const UnifiedConfig &config
-                    , const std::string &referenceFrameId
-                    , const vts::LodRange &lodRange
-                    , const vts::LodTileRange::list &tileRanges
-                    , const fs::path &tileIndexPath
-                    , const fs::path &storePath)
+/** Atomically publishes a flag tile index and metanode store pair:
+ *  stages both to temporary names, pairs the store to the staged index
+ *  content (header.pairing filled here), fsyncs and renames both so a
+ *  serving daemon sees either the old pair or the new pair. Shared by
+ *  the generation and the re-flag paths.
+ */
+void publishPair(const vts::TileIndex &tileIndex
+                 , const mnstore::Page::list &pages
+                 , mnstore::Header header
+                 , const fs::path &tileIndexPath
+                 , const fs::path &storePath)
 {
-    // source hash: every input that changes stored values
-    const auto sourceHash([&]() -> std::string
-    {
-        std::ostringstream os;
-        os << "referenceFrame=" << referenceFrameId
-           << ";lodRange=" << lodRange
-           << ";tileRanges=";
-        for (const auto &range : tileRanges) { os << range << "+"; }
-        os << ";geoidGrid="
-           << (config.geoidGrid ? *config.geoidGrid : std::string())
-           << ";heightFunction="
-           << heightFunctionJson(config.heightFunction)
-           << ";metaBinaryOrder=" << config.metaBinaryOrder
-           << ";metaDepth=" << config.metaDepth;
-        return utility::md5::hash_hex(os.str());
-    }());
-
     // staged artifacts: write both to temporary names...
     const auto tiTmp(utility::addExtension(tileIndexPath, ".tmp"));
     LOG(info3) << "Saving tile index into staged " << tiTmp << ".";
-    result.tileIndex.save(tiTmp);
+    tileIndex.save(tiTmp);
 
-    mnstore::Header header;
-    header.metaBinaryOrder = config.metaBinaryOrder;
-    header.metaDepth = config.metaDepth;
-    header.referenceFrame = referenceFrameId;
-    header.sourceHash = sourceHash;
     // ...pair the store with the staged flag index content...
     header.pairing = mnstore::fileDigest(tiTmp);
-    if (config.geoidGrid) { header.geoidGrid = *config.geoidGrid; }
-    header.heightFunction = heightFunctionJson(config.heightFunction);
 
     const auto storeTmp(utility::addExtension(storePath, ".tmp"));
     LOG(info3) << "Saving metanode store into staged " << storeTmp
-               << " (" << result.pages.size() << " pages).";
+               << " (" << pages.size() << " pages).";
     {
         mnstore::Writer writer(storeTmp, header);
-        for (const auto &page : result.pages) { writer.write(page); }
+        for (const auto &page : pages) { writer.write(page); }
         writer.close();
     }
 
@@ -937,6 +1112,50 @@ void publishUnified(const UnifiedResult &result
         << ").";
 }
 
+} // namespace
+
+void publishUnified(const UnifiedResult &result
+                    , const UnifiedConfig &config
+                    , const std::string &referenceFrameId
+                    , const vts::LodRange &lodRange
+                    , const vts::LodTileRange::list &tileRanges
+                    , const fs::path &tileIndexPath
+                    , const fs::path &storePath)
+{
+    // source hash: every input that changes stored values. skipPartial
+    // and prune are index-side delivery policies bound by the pairing
+    // digest, not stored-value inputs, so they stay out of the hash —
+    // the serving daemon recomputes this hash from the resource
+    // definition and a change here would declare every deployed pair
+    // stale.
+    const auto sourceHash([&]() -> std::string
+    {
+        std::ostringstream os;
+        os << "referenceFrame=" << referenceFrameId
+           << ";lodRange=" << lodRange
+           << ";tileRanges=";
+        for (const auto &range : tileRanges) { os << range << "+"; }
+        os << ";geoidGrid="
+           << (config.geoidGrid ? *config.geoidGrid : std::string())
+           << ";heightFunction="
+           << heightFunctionJson(config.heightFunction)
+           << ";metaBinaryOrder=" << config.metaBinaryOrder
+           << ";metaDepth=" << config.metaDepth;
+        return utility::md5::hash_hex(os.str());
+    }());
+
+    mnstore::Header header;
+    header.metaBinaryOrder = config.metaBinaryOrder;
+    header.metaDepth = config.metaDepth;
+    header.referenceFrame = referenceFrameId;
+    header.sourceHash = sourceHash;
+    if (config.geoidGrid) { header.geoidGrid = *config.geoidGrid; }
+    header.heightFunction = heightFunctionJson(config.heightFunction);
+
+    publishPair(result.tileIndex, result.pages, header
+                , tileIndexPath, storePath);
+}
+
 void publishUnifiedIndex(const UnifiedResult &result
                          , const fs::path &tileIndexPath)
 {
@@ -952,6 +1171,166 @@ void publishUnifiedIndex(const UnifiedResult &result
     LOG(info3)
         << "Tile index " << tileIndexPath
         << " published (coverage, no metanode store).";
+}
+
+namespace {
+
+/** Per-division-node context the re-flag needs: the SDS srs, the truescale
+ *  measure (navtile restoration) and the prune floor grid.
+ */
+struct ReflagNode {
+    vr::ReferenceFrame::Division::Node node;
+    geo::SrsDefinition srsDef;
+    std::shared_ptr<TrueScale> trueScale;
+    std::shared_ptr<GsdGrid> pruneGrid;
+};
+
+/** SDS extents (and centre) of one tile. */
+math::Extents2 tileExtents(const vr::ReferenceFrame::Division::Node &node
+                           , const vts::TileId &tileId)
+{
+    return rangeExtents(node, tileId.lod
+                        , vts::TileRange(tileId.x, tileId.y
+                                         , tileId.x, tileId.y));
+}
+
+} // namespace
+
+ReflagStats reflag(const fs::path &dataset
+                   , const vr::ReferenceFrame &referenceFrame
+                   , const fs::path &tileIndexPath
+                   , const fs::path &storePath
+                   , const ReflagConfig &config
+                   , bool apply)
+{
+    const bool suppress(config.skipPartial && *config.skipPartial);
+    const bool restore(config.skipPartial && !*config.skipPartial);
+    const bool prune(bool(config.pruneGsd));
+
+    mnstore::Store store(storePath);
+    auto header(store.header());
+
+    // the pair must come from one run: the store is only a trustworthy
+    // witness of the index's tiles while their pairing digest agrees
+    const auto pairing(mnstore::fileDigest(tileIndexPath));
+    if (header.pairing != pairing) {
+        LOGTHROW(err2, std::runtime_error)
+            << "Metanode store " << storePath << " is not paired with "
+            << tileIndexPath << " (store pairing " << header.pairing
+            << ", index " << pairing << "); reflag needs a matching pair.";
+    }
+
+    vts::TileIndex index;
+    index.load(tileIndexPath);
+
+    // per-division-node contexts (bisection nodes only); truescale opens
+    // the DEM, so build it only when restoring navtile bits
+    boost::optional<geo::GeoDataset> dem;
+    if (restore) { dem = geo::GeoDataset::open(dataset); }
+
+    std::vector<ReflagNode> nodes;
+    for (const auto &item : referenceFrame.division.nodes) {
+        const auto &node(item.second);
+        if (node.partitioning.mode != vr::PartitioningMode::bisection) {
+            continue;
+        }
+        ReflagNode ctx;
+        ctx.node = node;
+        ctx.srsDef = vr::system.srs(node.srs).srsDef;
+        if (restore) {
+            ctx.trueScale
+                = std::make_shared<TrueScale>(*dem, ctx.srsDef);
+        }
+        if (prune) {
+            ctx.pruneGrid = std::make_shared<GsdGrid>
+                (ctx.srsDef, node.extents, *config.pruneGsd
+                 , config.pruneExtraLods);
+            if (!ctx.pruneGrid->anyValid()) { ctx.pruneGrid.reset(); }
+        }
+        nodes.push_back(std::move(ctx));
+    }
+
+    // the bisection node whose subtree contains a tile (integer ancestry,
+    // no projection pipeline)
+    const auto findNode([&](const vts::TileId &tileId) -> ReflagNode*
+    {
+        for (auto &ctx : nodes) {
+            const auto &nid(ctx.node.id);
+            if (tileId.lod < nid.lod) { continue; }
+            const auto d(tileId.lod - nid.lod);
+            if (((tileId.x >> d) == nid.x) && ((tileId.y >> d) == nid.y)) {
+                return &ctx;
+            }
+        }
+        return nullptr;
+    });
+
+    ReflagStats stats;
+    mnstore::Page::list pages;
+    for (const auto &root : store.pageIds()) {
+        mnstore::Page page;
+        if (!store.read(root, page)) { continue; }
+
+        for (unsigned int level(0); level < header.metaDepth; ++level) {
+            const auto size(header.levelSize(level));
+            const vts::Lod lod(root.lod + level);
+            for (unsigned int y(0); y < size; ++y) {
+                for (unsigned int x(0); x < size; ++x) {
+                    auto &data(page.node(level, x, y));
+                    if (!data) { continue; }
+                    ++stats.total;
+
+                    const vts::TileId tileId
+                        (lod, (root.x << level) + x, (root.y << level) + y);
+                    auto *ctx(findNode(tileId));
+                    if (!ctx) { continue; }
+
+                    const auto extents(tileExtents(ctx->node, tileId));
+                    const auto center(math::center(extents));
+
+                    if (ctx->pruneGrid
+                        && (int(tileId.lod - ctx->node.id.lod)
+                            > ctx->pruneGrid->floorDepth(center)))
+                    {
+                        // drop from both store and index
+                        data = mnstore::NodeData();
+                        index.set(tileId, TiFlag::value_type(0));
+                        ++stats.pruned;
+                        continue;
+                    }
+
+                    const bool partial
+                        ((data.flags & mnstore::NodeData::mesh)
+                         && !(data.flags & mnstore::NodeData::watertight));
+                    if (!partial) { continue; }
+
+                    if (suppress) {
+                        index.set(tileId, TiFlag::value_type(0));
+                        ++stats.suppressed;
+                        continue;
+                    }
+                    if (restore) {
+                        const auto ts(math::size(extents));
+                        const math::Size2f samplePx
+                            (ts.width / config.tileSampling
+                             , ts.height / config.tileSampling);
+                        TiFlag::value_type flags(TiFlag::mesh);
+                        if ((*ctx->trueScale)(center, samplePx) < 1.0) {
+                            flags |= TiFlag::navtile;
+                        }
+                        index.set(tileId, flags);
+                        ++stats.restored;
+                    }
+                }
+            }
+        }
+        pages.push_back(std::move(page));
+    }
+
+    if (apply) {
+        publishPair(index, pages, header, tileIndexPath, storePath);
+    }
+    return stats;
 }
 
 } // namespace tiling

@@ -378,6 +378,10 @@ Resource::list loadResource(const boost::filesystem::path &path
  */
 void save(const boost::filesystem::path &path, const Resource &resource);
 
+/** Save single resource to given stream.
+ */
+void save(std::ostream &out, const Resource &resource);
+
 /** Writes helper config with include snippets, one per entry in include vector.
  */
 void saveIncludeConfig(const boost::filesystem::path &path

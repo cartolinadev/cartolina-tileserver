@@ -39,18 +39,20 @@ worth making.
 
 ## Generation pipeline (metanode-store mode)
 
-Resource setup runs three tools in sequence; each depends on the
-previous output. `mapproxy-setup-resource` chains them for the easy
-path (metanode-store mode by default).
+Resource setup has three stages; each depends on the previous output.
+`mapproxy-setup-resource` chains them for the easy path (metanode-store
+mode by default). The measurement and tiling stages are one tool,
+`mapproxy-tiling`; VRTWO generation sits between them.
 
-### 1. Calipers
+### 1. Survey (measurement)
 
-`mapproxy-calipers` reads the source raster dataset and measures
-its geographic extent. It produces a `Measurement` object carrying
-the optimal LOD range for the dataset, the tile ranges at each LOD,
-and x-overlap information for datasets that wrap the antimeridian.
-This step is fast; it does not read raster data values. Unchanged by
-RFC 7.
+`mapproxy-tiling`'s default dry run — the `mapproxy-calipers` library
+folded into it — reads the source dataset and measures its geographic
+extent, producing a `Measurement` carrying the optimal LOD range, the
+per-division-node tile ranges, the target floor GSD, x-overlap for
+datasets that wrap the antimeridian, and a suggested position. This
+stage is fast; it does not read raster data values. `mapproxy-setup-resource`
+calls the same `calipers::measure` library entry point.
 
 ### 2. VRTWO generation — `generatevrtwo`
 
@@ -91,8 +93,9 @@ disk. Dropping to a single pyramid removes two thirds of that work.
 
 Source: `mapproxy/src/tiling/tiling.cpp`, `mapproxy/src/tiling/unified.cpp`.
 
-The unified pass is the default `mapproxy-tiling` mode (`--legacy`
-keeps the old analysis). It produces, in one run, both:
+The unified pass is what `mapproxy-tiling --apply` runs for a DEM
+(`mapproxy-setup-resource --legacyTiling` selects the old per-tile
+analysis instead). It produces, in one run, both:
 
 - the flag **tile index** — a quadtree recording which tiles have
   mesh data, which are watertight, and which carry navtile data (see
@@ -129,6 +132,17 @@ silently substitute an averaging overview, defeating the `-ovr NONE`
 requirement). They run concurrently — pooled across all `(division
 node, pass)` warps under `--warpConcurrency` — while reduction and
 emission stay sequential in node order, so output is deterministic.
+
+**Emission policy.** Two options shape which tiles reach the flag index
+during the ascent. `--prune` (default on) drops a tile once its
+subdivision passes the source resolution at its own location — the
+per-tile version of the calipers depth measure, evaluated from the
+node's projection area scale, so a projection's area inflation no longer
+forces over-generation past the source. `--skipPartial` clears the mesh
+flag on non-watertight tiles so partial coverage produces no served
+geometry. Both touch only the flag index; the metanode store always
+records every tile's true coverage, which is what lets `--reflag`
+change these policies later without re-warping (see the operator guide).
 
 **Cost.** Far below the legacy per-tile-per-LOD warp. On the 1.94 Gpx
 test sample the pass runs in ~1 min vs ~14 min for legacy analysis;
@@ -290,4 +304,4 @@ requesting multi-LOD metatiles, and the operator-grade repackaging tool
 [backlog]: https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/backlog.md
 [rfc-7]: https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/rfc-metanode-store.md
 [surface-metatile]: https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/surface-metatile.md
-[tile-index]: https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/tile-index.md
+[tile-index]: tile-index.md

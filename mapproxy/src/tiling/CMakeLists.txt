@@ -18,9 +18,10 @@ buildsys_library(mp-tiling)
 # --- installation
 # ------------------------------------------------------------------------
 
-# test program
+# the unified survey + tiling tool (absorbs the former mapproxy-calipers)
 define_module(BINARY mapproxy-tiling
-  DEPENDS mapproxy-core vts-libs service gdal-drivers geometry geo
+  DEPENDS mp-tiling mp-calipers mapproxy-core vts-libs service gdal-drivers
+  geometry geo
   Boost_FILESYSTEM
   Boost_PROGRAM_OPTIONS)
 
@@ -29,7 +30,7 @@ set(mapproxy-tiling_SOURCES
   )
 
 add_executable(mapproxy-tiling ${mapproxy-tiling_SOURCES})
-target_link_libraries(mapproxy-tiling mp-tiling ${MODULE_LIBRARIES})
+target_link_libraries(mapproxy-tiling mp-tiling mp-calipers ${MODULE_LIBRARIES})
 target_compile_definitions(mapproxy-tiling PRIVATE ${MODULE_DEFINITIONS})
 buildsys_binary(mapproxy-tiling)
 set_target_version(mapproxy-tiling ${vts-mapproxy_VERSION})

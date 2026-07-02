@@ -75,13 +75,17 @@ struct Measurement {
     };
 
     DatasetType datasetType;
+
+    /** Native GSD (meters per pixel) measured from the dataset.
+     */
     double gsd;
 
-    /** Effective floor GSD (meters) the dataset is tiled for, set whenever it
-     *  differs from the native gsd (i.e. an explicit --gsd was given, or the
-     *  DEM demToOphotoScale is not 1). Unset means native gsd is used as-is.
+    /** Target floor GSD (meters per pixel) the finest LOD resolves: the
+     *  Config::gsd override when given, otherwise the native gsd (scaled
+     *  by demToOphotoScale for a DEM). Per-node depth and the spatial
+     *  prune threshold are derived from this.
      */
-    boost::optional<double> gsdOverride;
+    double targetGsd;
 
     vtslibs::vts::LodRange lodRange;
     vtslibs::vts::TileRange tileRange;

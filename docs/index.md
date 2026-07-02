@@ -19,6 +19,8 @@ wiki:
 
 - [Metatile production](tileserver-metatile-production.md) — current and
   legacy DEM metatile generation paths.
+- [Tile index](tile-index.md) — what a VTS tile index carries, how
+  `mapproxy-tiling` produces one, and how the served index is assembled.
 
 ## Reference
 

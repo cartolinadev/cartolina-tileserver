@@ -123,10 +123,11 @@ endif()
 # project
 add_subdirectory(src/mapproxy)
 add_subdirectory(src/tools)
+# calipers before tiling: mapproxy-tiling links the mp-calipers library
+add_subdirectory(src/calipers)
 add_subdirectory(src/tiling)
 add_subdirectory(src/rf-mask)
 add_subdirectory(src/generatevrtwo)
-add_subdirectory(src/calipers)
 add_subdirectory(src/setup-resource)
 
 # for testing

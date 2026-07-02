@@ -5,6 +5,48 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-02 — merge calipers into mapproxy-tiling; prune, skipPartial, reflag
+
+Folded the `mapproxy-calipers` measurement into `mapproxy-tiling`. The tool now
+measures the dataset itself, so a bare invocation is a dry survey (report plus a
+resource-config template) and `--apply` runs the tiling — no more transcribing
+`range<SRS>` lines into `--lodRange`/`--tileRange`. The standalone
+`mapproxy-calipers` binary is gone; the `mp-calipers` library stays.
+
+Three new capabilities on the DEM/metanode-store path:
+
+- `--prune` (default on): spatially-varying bottom LOD. A tile is dropped once
+  its subdivision passes the source resolution at its own location, using the
+  calipers depth formula (`½·log2(A_ground/(tileArea·G²))`) evaluated per tile
+  centre from the node's `geo::SrsFactors` area scale rather than only at the
+  node centre. It also caps each node's leaf LOD, so a projection's area
+  inflation no longer over-generates deep tiles. Verified on a synthetic
+  wide-latitude strip: at the leaf LOD ~94% of the high-latitude tiles are
+  pruned while coarse LODs stay byte-identical; equatorial depth matches
+  calipers by construction. Subsumes the per-node-bottom-lod backlog item.
+- `--skipPartial`: clears the flag-index entry of non-watertight tiles (mesh
+  and watertight cleared together — a meshless node cannot be watertight) so a
+  global surface fills the holes. The metanode store still records every tile's
+  true coverage, which makes the choice reversible offline.
+- `--reflag`: flips `--skipPartial` or retro-prunes an existing pair in place,
+  reading the store as the coverage witness, re-pairing and republishing
+  atomically with no re-warp. skipPartial on→off round-trips the index
+  byte-for-byte (navtile recomputed); retro-prune matches generation-time prune.
+
+Parity: a `--prune false`, no-skip run reproduces the prior artifacts (identical
+flag index and store pairing/pages; only the non-load-bearing sourceHash stamp
+differs). The GSD model is simplified to native `gsd` + derived `targetGsd`
+(dropped `gsdOverride` and the `invGsdScale` concept). `mapproxy-setup-resource`
+gains `--prune`/`--skipPartial`. Serving is unchanged — both options shape only
+the flag index. Live-served a skipPartial resource from the store: a suppressed
+partial tile is delivered as a structural metanode (no geometry, all four
+children reachable), the intended crack-free behaviour.
+
+Moved the tile-index reference from the wiki into these tileserver docs (it is
+server-side). Filed a backlog item: the store serve path must not depend on the
+warp fallback, since new DEM resources are normal-only and the legacy warp path
+will be retired.
+
 ## 2026-07-01 — calipers: per-node LOD from node-centre scale (QSC face symmetry)
 
 `mapproxy-calipers` reported a different maximum LOD per QSC cube face on a

@@ -491,6 +491,11 @@ void save(const boost::filesystem::path &path, const Resource &resource)
     f.close();
 }
 
+void save(std::ostream &out, const Resource &resource)
+{
+    detail::saveResource(out, resource);
+}
+
 void saveIncludeConfig(const boost::filesystem::path &path
                        , const std::vector<std::string> &includes)
 {

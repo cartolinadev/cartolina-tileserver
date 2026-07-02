@@ -10,6 +10,37 @@ The metanode-store and unified-tiling work in this backlog is specified by
 
 New entries are added directly below this introduction, newest first.
 
+## CORRECTNESS (tileserver): the store serve path must not depend on warp fallback
+
+**Opened:** 2026-07-02
+**Status:** open; needed before the legacy warp path is retired.
+
+`metatileFromStore` (`generator/metatile-store.cpp`) returns `boost::none`
+— falling back to the serve-time DEM warp — whenever a tile the *served*
+(delivery) index marks real (`geometry || navtile`) has no payload in the
+metanode store. Today that is treated as a safe degradation. It is not, for
+much longer: new production DEM resources build normal-only (no
+`dem.min`/`dem.max`, RFC 7 §7.1), and old ones have those pyramids removed
+after migration, so the warp path will be **unavailable**. Once the legacy
+path is sunset, any store-path fallback is a hard failure (500 / missing
+metatile), not a slower answer. The store must serve every metatile its
+paired index can declare.
+
+Concrete gap observed 2026-07-02: `prepareTileIndex` force-adds `navtile`
+to the whole configured `tileRange` at `lodRange.min` (its synthetic index),
+so a coarse tile with no coverage — hence no store node — can still be
+marked real in the served index. Its metatile then falls back to warp
+(`store page L-x-y has no payload for real tile ...`). On a normal-only
+resource that is a 500. The same happens for any tile the synthetic index
+marks real but the tiling/store omits.
+
+Directions (pick during design): make the tiling/store cover every tile the
+served index can mark real (e.g. carry navtile-only nodes with a height
+range in the store), or stop `prepareTileIndex` from marking a tile real
+where the paired store has no node, or let `metatileFromStore` synthesise a
+navtile-only metanode without a store read. Whichever: the invariant is that
+a valid store + index pair serves every metatile in range with no warp.
+
 ## DOCS: audit and update `resources.md`
 
 **Opened:** 2026-06-30
@@ -116,7 +147,14 @@ distance.
 ## TOOLS (tileserver): per-node bottom lod for mapproxy-tiling
 
 **Opened:** 2026-06-13
-**Status:** open; small, well-scoped tool change.
+**Status:** implemented 2026-07-02, subsumed by the spatial prune.
+
+`mapproxy-tiling` now measures the ranges itself (the merged
+`mapproxy-calipers`) and, with `--prune`, caps each division node's leaf
+at `node.id.lod + maxFloorDepth` — the deepest LOD any tile of the node
+survives the prune. That is exactly the per-node bottom lod this item
+asked for (and finer, since the prune also varies within the node). No
+separate per-node CLI slot was needed.
 
 `mapproxy-tiling` takes a single `--lodRange`, so every spatial-division
 node descends to `--lodRange.max` regardless of its own native
@@ -155,7 +193,18 @@ native-resolution leaf is later viewed close up.
 ## PERF (tileserver): spatially varying bottom lod — prune subtrees beyond source resolution
 
 **Opened:** 2026-06-12
-**Status:** deferred; needs a per-resource opt-in design.
+**Status:** implemented 2026-07-02 (`mapproxy-tiling --prune`, default on).
+
+Shipped as `--prune` in the merged `mapproxy-tiling` (and
+`mapproxy-setup-resource --prune`), tied to `--gsd`: a tile is dropped
+once its subdivision passes the source resolution at its own location,
+computed per tile from the node's projection area scale (the calipers
+depth formula per tile centre) rather than the `truescale` bit sketched
+below. `k` is implemented as `--pruneExtraLods` (0 = terrain-native),
+set from an operator `--bottomLod` overshoot; a per-resource
+resolution-margin knob for draped imagery remains the open refinement.
+The prune is also available on an existing pair via `--reflag --gsd`.
+The leaf-triangle-budget caveat below still applies.
 
 Pseudomercator's sec(lat) inflation means same-lod tiles cover ~11x
 less ground at 85 deg than at the equator, so a global lodRange keeps
@@ -241,7 +290,7 @@ output (existence, watertight, navtile flags).
 
 ### Background
 
-See [tile-index.md](https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/tile-index.md) for what the tile index carries and
+See [tile-index.md](tile-index.md) for what the tile index carries and
 how `mapproxy-tiling` produces it today, and
 [tileserver-metatile-production.md](tileserver-metatile-production.md)
 for the pipeline cost.
@@ -255,7 +304,7 @@ dataset this runs for days to weeks. The only output is a per-tile
 flag bitmask; the warped raster is discarded.
 
 This redesign also retires the watertight-under-broadening limitation
-documented in [tile-index.md](https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/tile-index.md): because truth is computed
+documented in [tile-index.md](tile-index.md): because truth is computed
 at native resolution and reduced upward, there is no coarse watertight
 value to over-trust.
 

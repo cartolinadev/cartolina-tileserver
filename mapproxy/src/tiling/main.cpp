@@ -24,22 +24,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/** mapproxy-tiling: surveys a source dataset against a reference frame and,
+ *  on demand, tiles it into the paired flag tile index and metanode store.
+ *
+ *  The tool merges the former mapproxy-calipers measurement into the tiling
+ *  pass: it measures the dataset itself (no hand-copied lod/tile ranges) and
+ *  derives the floor LODs from a target GSD. The default run is a dry
+ *  survey — it prints what it would produce and a resource-config template —
+ *  and only writes artifacts when asked to (--apply).
+ */
+
 #include <cstdlib>
-#include <utility>
-#include <functional>
-#include <map>
+#include <fstream>
+#include <iostream>
 
 #include <boost/optional.hpp>
-#include <boost/utility/in_place_factory.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/thread.hpp>
 #include <boost/format.hpp>
-#include <boost/variant.hpp>
+
+#include <gdal_priv.h>
+#include <ogr_api.h>
+#include <ogrsf_frmts.h>
 
 #include "utility/streams.hpp"
 #include "utility/buildsys.hpp"
-#include "utility/openmp.hpp"
 #include "service/cmdline.hpp"
 
 #include "geo/geodataset.hpp"
@@ -48,111 +56,133 @@
 #include "gdal-drivers/register.hpp"
 
 #include "vts-libs/registry/po.hpp"
+#include "vts-libs/registry/io.hpp"
 #include "vts-libs/vts/tileop.hpp"
 #include "vts-libs/vts/io.hpp"
-#include "vts-libs/vts/tileindex.hpp"
 
 #include "jsoncpp/json.hpp"
 #include "jsoncpp/io.hpp"
 
-#include "mapproxy/support/mnstore.hpp"
+#include "calipers/calipers.hpp"
+
+#include "mapproxy/resource.hpp"
+#include "mapproxy/definition.hpp"
 #include "mapproxy/support/srs.hpp"
 #include "mapproxy/heightfunction.hpp"
 
-#include "./tiling.hpp"
 #include "./unified.hpp"
 
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
-namespace ba = boost::algorithm;
 namespace vts = vtslibs::vts;
-
 namespace vr = vtslibs::registry;
 
-struct UnifiedTileRange {
-    boost::variant<vts::TileRange, vts::LodTileRange> range;
+namespace {
 
-    UnifiedTileRange(vts::TileRange &&tr)
-        : range(std::move(tr))
-    {}
-
-    UnifiedTileRange(vts::LodTileRange &&tr)
-        : range(std::move(tr))
-    {}
-
-    typedef std::vector<UnifiedTileRange> list;
-};
-
-class PrintUnifiedTileRange : public boost::static_visitor<>
+/** Opens a raster or vector dataset and returns its descriptor. Vector
+ *  datasets carry no raster bands, so their resolution is taken from
+ *  vectorResolution and the extents are measured from the layers.
+ */
+geo::GeoDataset::Descriptor probe(const fs::path &path
+                                  , double vectorResolution)
 {
-public:
-    PrintUnifiedTileRange(std::ostream &os) : os_(&os) {}
+    auto handle(::GDALOpenEx
+                (path.c_str()
+                 , GDAL_OF_RASTER | GDAL_OF_VECTOR | GDAL_OF_READONLY
+                 , nullptr, nullptr, nullptr));
 
-    void operator()(const vts::TileRange &tr) const {
-        *os_ << tr;
+    if (!handle) {
+        LOGTHROW(err2, std::runtime_error)
+            << "Failed to open dataset " << path << ".";
     }
 
-    void operator()(const vts::LodTileRange &tr) const {
-        *os_ << tr;
+    std::unique_ptr< ::GDALDataset>
+        dataset(static_cast< ::GDALDataset*>(handle));
+
+    if (dataset->GetRasterCount()) {
+        return geo::GeoDataset::use(std::move(dataset)).descriptor();
     }
 
-private:
-    std::ostream *os_;
-};
+    // valid GDAL dataset without any raster -> vector dataset
+    geo::GeoDataset::Descriptor ds;
+    ds.resolution(0) = ds.resolution(1) = vectorResolution;
+    ds.driverName = dataset->GetDriverName();
 
+    bool hasSrs(false);
+    ds.extents = math::Extents2(math::InvalidExtents{});
+    for (int i(0), e(dataset->GetLayerCount()); i < e; ++i) {
+        auto layer(dataset->GetLayer(i));
+        if (!layer->GetFeatureCount(TRUE)) { continue; }
 
-template<typename CharT, typename Traits>
-inline std::basic_ostream<CharT, Traits>&
-operator<<(std::basic_ostream<CharT, Traits> &os, const UnifiedTileRange &tr)
-{
-    boost::apply_visitor(PrintUnifiedTileRange(os), tr.range);
-    return os;
-}
-
-class AsLodTileRange : public boost::static_visitor<vts::LodTileRange>
-{
-public:
-    AsLodTileRange(vts::Lod minLod) : minLod_(minLod) {}
-
-    vts::LodTileRange operator()(const vts::TileRange &tr) const {
-        return vts::LodTileRange(minLod_, tr);
-    }
-
-    vts::LodTileRange operator()(const vts::LodTileRange &tr) const {
-        return tr;
-    }
-
-private:
-    vts::Lod minLod_;
-};
-
-vts::LodTileRange::list
-asLodTileRangeList(vts::Lod minLod, const UnifiedTileRange::list &utr)
-{
-    vts::LodTileRange::list ranges;
-    AsLodTileRange visitor(minLod);
-    for (const auto &tr : utr) {
-        ranges.push_back(boost::apply_visitor(visitor, tr.range));
-    }
-    return ranges;
-}
-
-void validate(boost::any &v, const std::vector<std::string> &values
-              , UnifiedTileRange*, int)
-{
-    po::validators::check_first_occurrence(v);
-    const auto &s(po::validators::get_single_string(values));
-
-    try {
-        v = UnifiedTileRange(boost::lexical_cast<vts::TileRange>(s));
-    } catch (const boost::bad_lexical_cast&) {
-        try {
-            v = UnifiedTileRange(boost::lexical_cast<vts::LodTileRange>(s));
-        } catch (const boost::bad_lexical_cast&) {
-            throw po::validation_error
-                (po::validation_error::invalid_option_value);
+        ::OGREnvelope envelope;
+        if (layer->GetExtent(&envelope, TRUE) == OGRERR_NONE) {
+            update(ds.extents, envelope.MinX, envelope.MinY);
+            update(ds.extents, envelope.MaxX, envelope.MaxY);
+        }
+        if (!hasSrs) {
+            if (const auto *ref = layer->GetSpatialRef()) {
+                ds.srs = geo::SrsDefinition::fromReference(*ref);
+                hasSrs = true;
+            }
         }
     }
+
+    if (!valid(ds.extents)) {
+        LOGTHROW(err2, std::runtime_error)
+            << "Failed to measure dataset " << path << ".";
+    }
+
+    auto size(math::size(ds.extents));
+    ds.size.width = int(size.width / ds.resolution(0));
+    ds.size.height = int(size.height / ds.resolution(0));
+
+    return ds;
+}
+
+/** Builds a resource-config template from a measurement: a single-resource
+ *  JSON the operator edits (attribution/credits, dataset path) and copies
+ *  into a mapproxy resource definition directory. It is intentionally not
+ *  a live config: it carries no credits and a loud comment.
+ */
+Resource buildTemplate(const calipers::Measurement &m
+                       , const std::string &referenceFrame
+                       , const std::string &id
+                       , const fs::path &datasetPath
+                       , const boost::optional<std::string> &geoidGrid)
+{
+    Resource r({});
+    r.id = Resource::Id(referenceFrame, "TEMPLATE", id);
+    r.comment = "TEMPLATE — add credits/attribution and set the dataset "
+        "path before installing.";
+    r.lodRange = m.lodRange;
+    r.tileRange = m.tileRange;
+
+    switch (m.datasetType) {
+    case calipers::DatasetType::dem: {
+        r.generator = Resource::Generator::from<resource::SurfaceDem>();
+        auto def(std::make_shared<resource::SurfaceDem>());
+        def->dem.dataset = datasetPath.string();
+        if (geoidGrid) { def->dem.geoidGrid = *geoidGrid; }
+        def->introspection.position = m.position;
+        r.definition(def);
+        break;
+    }
+
+    case calipers::DatasetType::ophoto: {
+        r.generator = Resource::Generator::from<resource::TmsRaster>();
+        auto def(std::make_shared<resource::TmsRaster>());
+        def->dataset = datasetPath.string();
+        r.definition(def);
+        break;
+    }
+
+    default:
+        LOGTHROW(err2, std::runtime_error)
+            << "No resource template for dataset type <"
+            << m.datasetType << "> (author the geodata config manually).";
+    }
+
+    return r;
 }
 
 class Tiling : public service::Cmdline {
@@ -160,7 +190,6 @@ public:
     Tiling()
         : service::Cmdline("mapproxy-tiling", BUILD_TARGET_VERSION
                            , (service::DISABLE_EXCESSIVE_LOGGING))
-        , noexcept_(false)
     {}
 
 private:
@@ -176,87 +205,126 @@ private:
 
     int runImpl();
 
-    int runUnified(const vr::ReferenceFrame &rf);
+    int runReflag(const vr::ReferenceFrame &rf);
+
+    void report(const calipers::Measurement &m
+                , const vr::ReferenceFrame &rf, std::ostream &out) const;
+
+    void writeTemplate(const calipers::Measurement &m) const;
+
+    int apply(const vr::ReferenceFrame &rf, const calipers::Measurement &m);
 
     fs::path input_;
+    fs::path dataset_;
+    std::string referenceFrame_;
+
+    calipers::Config calipersConfig_;
+    double vectorResolution_ = 1.0;
+    boost::optional<vts::Lod> bottomLod_;
+
+    bool apply_ = false;
+    bool prune_ = true;
+    bool skipPartial_ = false;
+    bool skipPartialGiven_ = false;
+    bool reflag_ = false;
+
+    tiling::UnifiedConfig unifiedConfig_;
+    boost::optional<unsigned int> metaBinaryOrder_;
+
     fs::path output_;
     fs::path storeOutput_;
-    std::string referenceFrame_;
-    vts::LodRange lodRange_;
-    vts::TileRange tileRange_;
+    boost::optional<fs::path> resourceConfig_;
 
-    UnifiedTileRange::list tileRanges_;
-
-    tiling::Config config_;
-    tiling::UnifiedConfig unifiedConfig_;
-    bool legacy_;
-    boost::optional<unsigned int> metaBinaryOrder_;
-    fs::path dataset_;
-
-    bool noexcept_;
+    bool noexcept_ = false;
 };
 
-
 void Tiling::configuration(po::options_description &cmdline
-                            , po::options_description &config
-                            , po::positional_options_description &pd)
+                           , po::options_description &config
+                           , po::positional_options_description &pd)
 {
     vr::registryConfiguration(cmdline, vr::defaultPath());
 
     cmdline.add_options()
         ("input", po::value(&input_)->required()
-         , "Path to dataset to proces.")
-        ("output", po::value<fs::path>(&output_)
-         , "Path output tiling file if different from "
-         "input/tiling.referenceFrame.")
+         , "Path to the dataset (or a dataset dir containing dem/ophoto).")
         ("referenceFrame", po::value(&referenceFrame_)->required()
-         , "Tiling reference frame.")
-        ("lodRange", po::value(&lodRange_)->required()
-         , "Lod range where content is generated.")
-        ("tileRange", po::value(&tileRanges_)->required()
-         , "Either single tile range at lodRange.min or one or more "
-         "lod/tileRange entries (obtained from mapproxy-calipers).")
-        ("tileSampling", po::value(&config_.tileSampling)
-         ->default_value(config_.tileSampling)
-         , "Nuber of pixels to break tile into when analyzing its coverage.")
-        ("parallel", po::value(&config_.parallel)
-         ->default_value(config_.parallel)
-         , "Use OpenMP to parallelize work.")
-        ("forceWatertight", po::value(&config_.forceWatertight)
-         ->default_value(config_.forceWatertight)->implicit_value(true)
-         , "Treats all partial tiles as watertight. Will lie about the holes "
-           "in the dataset.")
+         , "Reference frame to tile in.")
 
-        ("legacy", "Use the legacy per-tile per-LOD analysis warp and "
-         "produce the flag tile index only (no metanode store).")
+        ("gsd", po::value<double>()
+         , "Target floor GSD (ground sampling distance, meters per pixel) "
+         "the finest LOD resolves. When omitted, the native GSD measured "
+         "from the dataset is used (scaled finer for a DEM by "
+         "--demToOphotoScale).")
+        ("datasetType", po::value<calipers::DatasetType>()
+         , "Override dataset type autodetection (dem or ophoto).")
+        ("demToOphotoScale", po::value(&calipersConfig_.demToOphotoScale)
+         ->default_value(calipersConfig_.demToOphotoScale)
+         , "DEM-only default floor scale used when --gsd is not given: the "
+         "inverse resolution ratio of the finest ophoto/mesh draped on the "
+         "DEM (3 = tile three times finer than the DEM sample spacing).")
+        ("tileFractionLimit", po::value(&calipersConfig_.tileFractionLimit)
+         ->default_value(calipersConfig_.tileFractionLimit)
+         , "Dataset-border tracing granularity (expert): inverse tile "
+         "fraction at which border refinement stops.")
+        ("vectorResolution", po::value(&vectorResolution_)
+         ->default_value(vectorResolution_)
+         , "Assumed resolution (meters per pixel) of a vector dataset.")
+        ("bottomLod", po::value<vts::Lod>()
+         , "Floor LOD override: widen the analyzed lod range to at least "
+         "this LOD (the prune floor is extended by the same amount).")
+
+        ("apply", "Actually run the tiling and publish the artifacts. "
+         "Without it the tool performs a dry survey only (measurement "
+         "report and resource-config template). In --reflag mode, --apply "
+         "rewrites the existing pair (otherwise the flip is reported only).")
+        ("reflag", "Re-flag an existing paired flag index + metanode store "
+         "in place instead of tiling: flip --skipPartial and/or retro-prune "
+         "(--gsd) without re-running the warps. No measurement is done.")
+        ("prune", po::value(&prune_)->default_value(prune_)
+         ->implicit_value(true)
+         , "Spatially-varying bottom LOD: drop tiles finer than the target "
+         "GSD resolves at their own location (metanode/DEM path only). "
+         "'--prune false' tiles the full lod range everywhere.")
+        ("skipPartial", po::value(&skipPartial_)->default_value(skipPartial_)
+         ->implicit_value(true)
+         , "Suppress the mesh of non-watertight (partial) tiles: the served "
+         "surface carries geometry only where a tile is complete, so a "
+         "global surface can fill the holes without cracks. Metanode/DEM "
+         "path only; mutually exclusive with --forceWatertight.")
+        ("forceWatertight", po::value(&unifiedConfig_.forceWatertight)
+         ->default_value(unifiedConfig_.forceWatertight)->implicit_value(true)
+         , "Treat all partial tiles as watertight (lies about holes).")
+
+        ("output", po::value<fs::path>(&output_)
+         , "Flag tile index output (default input/tiling.referenceFrame).")
         ("store", po::value<fs::path>(&storeOutput_)
-         , "Path of the output metanode store if different from "
-         "input/metanodes.referenceFrame.")
+         , "Metanode store output (default "
+         "input/metanodes.referenceFrame).")
+        ("resourceConfig", po::value<fs::path>()
+         , "Resource-config template destination; '-' means stdout. "
+         "Default: stdout in a dry run, input/resource.referenceFrame.json "
+         "with --apply.")
+
+        ("tileSampling", po::value(&unifiedConfig_.tileSampling)
+         ->default_value(unifiedConfig_.tileSampling)
+         , "Samples per tile edge for the navtile-eligibility measure.")
         ("metaBinaryOrder", po::value<unsigned int>()
-         , "Metatile packaging: horizontal binary order override "
+         , "Metatile packaging horizontal binary order override "
          "(defaults to the reference frame value).")
         ("metaDepth", po::value(&unifiedConfig_.metaDepth)
          ->default_value(unifiedConfig_.metaDepth)
-         , "Metatile packaging: number of LOD levels per metatile "
-         "delivery unit.")
+         , "Metatile packaging: LOD levels per delivery unit.")
         ("warpConcurrency", po::value(&unifiedConfig_.warpConcurrency)
          ->default_value(unifiedConfig_.warpConcurrency)
-         , "Maximum concurrent filter-pass warps across division "
-         "nodes (source-read bound; raise only if storage sustains "
-         "more streams).")
+         , "Maximum concurrent filter-pass warps (source-read bound).")
         ("geoidGrid", po::value<std::string>()
          , "Geoid grid of the SDS vertical datum (resource geoidGrid "
-         "setting); stored heights are converted to the raw SDS "
-         "vertical, matching the serve path. Must be a PROJ-readable "
-         "grid (e.g. 'egm96_15.gtx'); validated at startup, so an "
-         "unreadable grid (such as the VTS registry .jpg geoid grids) "
-         "aborts the run instead of baking an unservable store. "
-         "Omit to use the reference frame body's default geoid; pass "
-         "an empty string for a source that is already ellipsoidal "
-         "(no geoid).")
+         "setting). Must be PROJ-readable; validated at startup. Omit for "
+         "the reference frame body default; pass an empty string for an "
+         "already-ellipsoidal source.")
         ("heightFunction", po::value<fs::path>()
-         , "Path to a JSON file with a {\"heightFunction\": ...} "
-         "definition baked into stored heights (resource setting).")
+         , "Path to a JSON {\"heightFunction\": ...} baked into stored "
+         "heights.")
 
         ("noexcept", "Do not catch exceptions, let the program crash.")
         ;
@@ -273,7 +341,6 @@ void Tiling::configure(const po::variables_map &vars)
     vr::registryConfigure(vars);
 
     bool complexDataset(true);
-
     if (fs::exists(input_ / "dem")) {
         dataset_ = input_ / "dem";
     } else if (fs::exists(input_ / "ophoto")) {
@@ -283,26 +350,40 @@ void Tiling::configure(const po::variables_map &vars)
         complexDataset = false;
     }
 
-    if (vars.count("output")) {
-        output_ = vars["output"].as<fs::path>();
-    } else if (complexDataset) {
-        output_ = input_ / ("tiling." + referenceFrame_);
-    } else {
-        throw po::required_option("output");
+    if (vars.count("datasetType")) {
+        calipersConfig_.datasetType
+            = vars["datasetType"].as<calipers::DatasetType>();
+    }
+    if (vars.count("gsd")) {
+        const auto gsd(vars["gsd"].as<double>());
+        if (gsd <= 0.0) {
+            throw po::error("--gsd must be a positive value in meters.");
+        }
+        calipersConfig_.gsd = gsd;
+    }
+    if (vars.count("bottomLod")) {
+        bottomLod_ = vars["bottomLod"].as<vts::Lod>();
     }
 
+    apply_ = vars.count("apply");
     noexcept_ = vars.count("noexcept");
+    reflag_ = vars.count("reflag");
+    // default_value keeps "skipPartial" present in vars even when unset, so
+    // reflag distinguishes an explicit flip request via defaulted()
+    skipPartialGiven_ = vars.count("skipPartial")
+        && !vars["skipPartial"].defaulted();
 
-    legacy_ = vars.count("legacy");
+    if (skipPartial_ && unifiedConfig_.forceWatertight) {
+        throw po::error("--skipPartial and --forceWatertight are mutually "
+                        "exclusive.");
+    }
 
     if (vars.count("metaBinaryOrder")) {
         metaBinaryOrder_ = vars["metaBinaryOrder"].as<unsigned int>();
     }
-
     if (vars.count("geoidGrid")) {
         unifiedConfig_.geoidGrid = vars["geoidGrid"].as<std::string>();
     }
-
     if (vars.count("heightFunction")) {
         const auto hfPath(vars["heightFunction"].as<fs::path>());
         std::ifstream file(hfPath.string());
@@ -311,82 +392,235 @@ void Tiling::configure(const po::variables_map &vars)
             = HeightFunction::parse(value, "heightFunction");
     }
 
-    unifiedConfig_.tileSampling = config_.tileSampling;
-    unifiedConfig_.forceWatertight = config_.forceWatertight;
-
-    if (!vars.count("store")) {
-        storeOutput_ = input_ / ("metanodes." + referenceFrame_);
+    // --apply writes artifacts and --reflag reads an existing pair, so
+    // both need resolved output/store paths
+    const bool needPaths(apply_ || reflag_);
+    if (vars.count("output")) {
+        output_ = vars["output"].as<fs::path>();
+    } else if (complexDataset) {
+        output_ = input_ / ("tiling." + referenceFrame_);
+    } else if (needPaths) {
+        throw po::required_option("output");
     }
 
-    LOG(info3, log_)
-        << "Config:"
-        << "\n\tinput = " << input_
-        << "\n\tdataset = " << dataset_
-        << "\n\toutput = " << output_
-        << "\n\treferenceFrame = " << referenceFrame_
-        << "\n\tlodRange = " << lodRange_
-        << "\n\ttileRange = " << utility::join(tileRanges_, " ")
-        << "\n"
-        ;
+    if (vars.count("store")) {
+        storeOutput_ = vars["store"].as<fs::path>();
+    } else if (complexDataset) {
+        storeOutput_ = input_ / ("metanodes." + referenceFrame_);
+    } else if (needPaths) {
+        throw po::required_option("store");
+    }
+
+    if (vars.count("resourceConfig")) {
+        resourceConfig_ = vars["resourceConfig"].as<fs::path>();
+    }
 }
 
 bool Tiling::help(std::ostream &out, const std::string &what) const
 {
     if (what.empty()) {
-        // program help
-        out << ("mapproxy-tiling tool\n"
-                "    Analyzes input dataset and generates tiling "
-                "information.\n"
-                "usage:\n"
-                "    mapproxy-tiling input referenceFrame [ options ]\n"
+        out << ("mapproxy-tiling input referenceFrame [ options ]\n"
+                "    Surveys a dataset against a reference frame and, with\n"
+                "    --apply, tiles it into the paired flag tile index and\n"
+                "    metanode store; also emits a resource-config template.\n"
                 "\n"
-                "    LOD and tile ranges:\n"
-                "        Tile tree descent must be limited by user.\n"
-                "        LOD range (--lodRange) is a range of levels of\n"
-                "        detail where tiling tree is analyzed in the\n"
-                "        \"min,max\" format; both numbers are inclusive.\n"
-                "        Tile range (--tileRange) is a range of tiles at\n"
-                "        certain LOD in the \"xmin,ymin:xmax,ymax\" format;\n"
-                "        all four numbers are inclusive.\n"
-                "        Simple tile range describes tile range at minimum\n"
-                "        LOD range (i.e. first number in LOD range).\n"
-                "        Complex tile range is specified in the\n"
-                "        \"LOD/xmin,ymin:xmax,ymax\" format which describes\n"
-                "        the tile range at the given LOD (which can even be\n"
-                "        outside of lodRange).\n"
+                "    Default run is a dry survey: it measures the dataset\n"
+                "    (native and target GSD, per-node lod/tile ranges,\n"
+                "    suggested position) and prints the report and the\n"
+                "    resource-config template, without writing artifacts.\n"
+                "    Add --apply to run the tiling and publish.\n"
                 "\n"
-                "        --tileRange may be repeated, one entry per spatial\n"
-                "        division node (the range<SRS> lines of mapproxy-\n"
-                "        calipers). The LOD prefix of a complex entry is the\n"
-                "        LOD at which that node's footprint was measured and\n"
-                "        is used to rescale it during descent; it does not\n"
-                "        limit how deep the node is tiled. Descent depth for\n"
-                "        every node is the single --lodRange.max.\n"
-                "\n"
-                "        It is recommended to use LOD range and complex tile\n"
-                "        ranges from the \"mapproxy-calipers\" tool output\n"
-                "        instead of guessing values or processing whole tile \n"
-                "        world.\n"
-                "\n"
-                "        NB: For unlimited tile tree descent (i.e. whole world)\n"
-                "        one must explicitely use lodRange starting from zero \n"
-                "        and use --tileRange=0,0:0,0.\n"
+                "    --gsd sets the target floor resolution; the floor LODs\n"
+                "    are derived from it. --prune (default on) drops tiles\n"
+                "    that would resolve finer than the source at their own\n"
+                "    location. --skipPartial suppresses the mesh of partial\n"
+                "    tiles so a global surface can fill the holes.\n"
                 "\n"
                 );
-
         return true;
     }
-
     return false;
+}
+
+void Tiling::report(const calipers::Measurement &m
+                    , const vr::ReferenceFrame&, std::ostream &out) const
+{
+    out << "Dataset: " << dataset_ << " (" << m.datasetType << ")\n"
+        << "Reference frame: " << referenceFrame_ << "\n"
+        << "Native GSD: " << m.gsd << " m/px\n"
+        << "Target floor GSD: " << m.targetGsd << " m/px"
+        << (calipersConfig_.gsd ? " (--gsd)" : "") << "\n";
+    if (m.xOverlap) {
+        out << "Horizontal wrap: " << *m.xOverlap << " px\n";
+    }
+
+    out << "Spatial division nodes:\n";
+    for (const auto &node : m.nodes) {
+        const auto lr(node.ranges.lodRange());
+        out << "  " << node.srs << ": lodRange " << lr
+            << " tileRange@" << lr.max << " " << node.ranges.tileRange(lr.max)
+            << "\n";
+    }
+    out << "Overall: lodRange " << m.lodRange
+        << " tileRange " << m.tileRange << "\n";
+    out << std::fixed << "Suggested position: " << m.position << "\n";
+
+    const bool dem(m.datasetType == calipers::DatasetType::dem);
+    out << "Prune: " << ((dem && prune_)
+                         ? str(boost::format("on (floor GSD %g m)")
+                               % m.targetGsd)
+                         : std::string("off"))
+        << " | skipPartial: " << ((dem && skipPartial_) ? "on" : "off")
+        << " | forceWatertight: "
+        << (unifiedConfig_.forceWatertight ? "on" : "off") << "\n";
+
+    if (apply_) {
+        out << "Artifacts:\n  tile index: " << output_ << "\n";
+        if (dem) { out << "  metanode store: " << storeOutput_ << "\n"; }
+    }
+}
+
+void Tiling::writeTemplate(const calipers::Measurement &m) const
+{
+    if (m.datasetType == calipers::DatasetType::vector) {
+        LOG(info3)
+            << "Vector dataset: no resource template emitted (author the "
+            "geodata resource config manually from the ranges above).";
+        return;
+    }
+
+    const auto r(buildTemplate(m, referenceFrame_, input_.filename().string()
+                               , dataset_, unifiedConfig_.geoidGrid));
+
+    // destination: explicit --resourceConfig ('-' = stdout) wins; else
+    // stdout in a dry run, a file beside the artifacts with --apply
+    const bool toStdout
+        (resourceConfig_
+         ? (resourceConfig_->string() == "-")
+         : !apply_);
+
+    if (toStdout) {
+        std::cout << "\n--- resource configuration template ---\n";
+        save(std::cout, r);
+        std::cout << std::flush;
+        return;
+    }
+
+    const auto path
+        (resourceConfig_
+         ? *resourceConfig_
+         : input_ / ("resource." + referenceFrame_ + ".json"));
+    save(path, r);
+    LOG(info4)
+        << "Resource configuration template written to " << path
+        << "; edit its credits/attribution and dataset path and copy it "
+        "into your mapproxy resource definition directory.";
+}
+
+int Tiling::apply(const vr::ReferenceFrame &rf
+                  , const calipers::Measurement &m)
+{
+    if (m.datasetType == calipers::DatasetType::vector) {
+        LOG(err3, log_)
+            << "Cannot tile a vector dataset; run without --apply to "
+            "measure it for a geodata resource config.";
+        return EXIT_FAILURE;
+    }
+
+    unifiedConfig_.metaBinaryOrder
+        = (metaBinaryOrder_ ? *metaBinaryOrder_ : rf.metaBinaryOrder);
+
+    // any raster that is not a DEM is imagery: coverage (mask-only) pass,
+    // flag index alone, no metanode store
+    unifiedConfig_.coverage = (m.datasetType != calipers::DatasetType::dem);
+
+    if (unifiedConfig_.coverage && skipPartial_) {
+        LOG(err3, log_)
+            << "--skipPartial applies to the DEM (metanode) path only.";
+        return EXIT_FAILURE;
+    }
+
+    auto lodRange(m.lodRange);
+    if (unifiedConfig_.coverage) {
+        unifiedConfig_.pruneGsd = boost::none;
+    } else if (prune_) {
+        unifiedConfig_.pruneGsd = m.targetGsd;
+        // an operator floor deeper than the measured one must not be
+        // pruned away: give the prune that many extra local LODs
+        if (bottomLod_ && (*bottomLod_ > m.lodRange.max)) {
+            unifiedConfig_.pruneExtraLods = *bottomLod_ - m.lodRange.max;
+        }
+    }
+    unifiedConfig_.skipPartial = skipPartial_;
+
+    if (bottomLod_) {
+        lodRange.max = std::max(lodRange.max, *bottomLod_);
+    }
+
+    const auto tileRanges(m.lodTileRanges());
+    auto result(tiling::generateUnified
+                (dataset_, rf, lodRange, tileRanges, unifiedConfig_));
+
+    if (unifiedConfig_.coverage) {
+        tiling::publishUnifiedIndex(result, output_);
+    } else {
+        tiling::publishUnified(result, unifiedConfig_, referenceFrame_
+                               , lodRange, tileRanges, output_, storeOutput_);
+    }
+
+    writeTemplate(m);
+    LOG(info4) << "Done.";
+    return EXIT_SUCCESS;
+}
+
+int Tiling::runReflag(const vr::ReferenceFrame &rf)
+{
+    if (!fs::exists(storeOutput_)) {
+        LOG(err3, log_)
+            << "No metanode store at " << storeOutput_
+            << "; --reflag applies to DEM (metanode-store) resources only.";
+        return EXIT_FAILURE;
+    }
+
+    tiling::ReflagConfig rc;
+    if (skipPartialGiven_) { rc.skipPartial = skipPartial_; }
+    if (calipersConfig_.gsd) { rc.pruneGsd = *calipersConfig_.gsd; }
+    rc.tileSampling = unifiedConfig_.tileSampling;
+
+    if (!rc.skipPartial && !rc.pruneGsd) {
+        LOG(err3, log_)
+            << "--reflag needs something to change: pass --skipPartial "
+            "<bool> and/or --gsd <m> (retro-prune).";
+        return EXIT_FAILURE;
+    }
+
+    const auto stats(tiling::reflag(dataset_, rf, output_, storeOutput_
+                                    , rc, apply_));
+
+    std::cout << "Reflag " << (apply_ ? "applied" : "(dry, use --apply)")
+              << ": examined " << stats.total << " store nodes";
+    if (rc.skipPartial && *rc.skipPartial) {
+        std::cout << ", suppressed " << stats.suppressed << " partial tiles";
+    }
+    if (rc.skipPartial && !*rc.skipPartial) {
+        std::cout << ", restored " << stats.restored << " partial tiles";
+    }
+    if (rc.pruneGsd) {
+        std::cout << ", pruned " << stats.pruned << " tiles";
+    }
+    std::cout << "." << std::endl;
+    return EXIT_SUCCESS;
 }
 
 int Tiling::runImpl()
 {
     auto rf(vr::system.referenceFrames(referenceFrame_));
 
-    // Resolve the geoid grid the same way as mapproxy-setup-resource:
-    // an explicit value wins, an explicit empty string means "no geoid",
-    // and an omitted grid falls back to the reference frame body default.
+    if (reflag_) { return runReflag(rf); }
+
+    // Resolve the geoid grid: an explicit value wins, an explicit empty
+    // string means "no geoid", an omitted grid falls back to the
+    // reference frame body default. Fail fast on a grid PROJ cannot read.
     if (!unifiedConfig_.geoidGrid) {
         if (rf.body) {
             unifiedConfig_.geoidGrid
@@ -395,84 +629,47 @@ int Tiling::runImpl()
     } else if (unifiedConfig_.geoidGrid->empty()) {
         unifiedConfig_.geoidGrid = boost::none;
     }
-
-    // Fail fast on a geoid grid PROJ cannot read, rather than baking a
-    // store that fails every metatile at serve time.
     validateGeoidGrid(unifiedConfig_.geoidGrid);
-    if (unifiedConfig_.geoidGrid) {
-        LOG(info3, log_) << "Using geoid grid '"
-                         << *unifiedConfig_.geoidGrid << "'.";
+
+    const auto ds(probe(dataset_, vectorResolution_));
+    const auto m(calipers::measure(rf, ds, calipersConfig_));
+
+    if (m.nodes.empty()) {
+        LOG(err3, log_)
+            << "Dataset does not fall inside any node of reference frame <"
+            << referenceFrame_ << ">; nothing to tile.";
+        return EXIT_FAILURE;
     }
 
-    auto ds(geo::GeoDataset::open(dataset_));
+    report(m, rf, std::cout);
 
-    if (!legacy_) {
-        // Route by dataset type, using the same DEM criterion as
-        // calipers (single band, non-byte data type). A DEM gets the
-        // full unified pass with the metanode store; any other raster
-        // (imagery) gets the store-less coverage variant — existence
-        // and watertightness from the mask band, no heights.
-        const auto desc(ds.descriptor());
-        unifiedConfig_.coverage
-            = !((desc.bands == 1) && (desc.dataType != GDT_Byte));
-        return runUnified(rf);
+    if (!apply_) {
+        writeTemplate(m);
+        return EXIT_SUCCESS;
     }
 
-    auto ti(tiling::generate(dataset_, rf, lodRange_
-                             , asLodTileRangeList(lodRange_.min, tileRanges_)
-                             , config_));
-
-    LOG(info3) << "Saving generated tile index into " << output_ << ".";
-    ti.save(output_);
-    LOG(info3) << "Tile index saved.";
-
-    LOG(info4) << "Done.";
-
-    return EXIT_SUCCESS;
-}
-
-int Tiling::runUnified(const vr::ReferenceFrame &rf)
-{
-    unifiedConfig_.metaBinaryOrder
-        = (metaBinaryOrder_ ? *metaBinaryOrder_ : rf.metaBinaryOrder);
-
-    const auto tileRanges(asLodTileRangeList(lodRange_.min, tileRanges_));
-
-    auto result(tiling::generateUnified
-                (dataset_, rf, lodRange_, tileRanges, unifiedConfig_));
-
-    if (unifiedConfig_.coverage) {
-        // imagery: flag tile index only, no metanode store
-        tiling::publishUnifiedIndex(result, output_);
-    } else {
-        tiling::publishUnified(result, unifiedConfig_, referenceFrame_
-                               , lodRange_, tileRanges, output_
-                               , storeOutput_);
-    }
-
-    LOG(info4) << "Done.";
-
-    return EXIT_SUCCESS;
+    return apply(rf, m);
 }
 
 int Tiling::run()
 {
-    if (noexcept_) {
-        return runImpl();
-    }
+    if (noexcept_) { return runImpl(); }
 
     try {
         return runImpl();
     } catch (const std::exception &e) {
-        std::cerr << "maproxy-tiling: " << e.what() << '\n';
+        std::cerr << "mapproxy-tiling: " << e.what() << '\n';
         return EXIT_FAILURE;
     }
 }
 
+} // namespace
+
 int main(int argc, char *argv[])
 {
     gdal_drivers::registerAll();
-    // force VRT not to share undelying datasets
+    ::OGRRegisterAll();
+    // force VRT not to share underlying datasets
     geo::Gdal::setOption("VRT_SHARED_SOURCE", 0);
     return Tiling()(argc, argv);
 }

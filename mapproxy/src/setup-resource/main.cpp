@@ -115,6 +115,15 @@ struct Config {
      */
     bool legacyTiling = false;
 
+    /** Spatially-varying bottom LOD in the metanode-store tiling: drop
+     *  tiles finer than the target GSD resolves at their location.
+     */
+    bool prune = true;
+
+    /** Suppress the mesh of partial tiles in the metanode-store tiling.
+     */
+    bool skipPartial = false;
+
     struct {
         boost::optional<fs::path> datasetHome;
     } override;
@@ -246,6 +255,15 @@ void SetupResource::configuration(po::options_description &cmdline
          , "Use OpenMP to parallelize work. Can be used "
          "to disable parallelism in various parts of dataset processing "
          "(currently only tiling).")
+        ("prune", po::value(&config_.prune)
+         ->default_value(config_.prune)->implicit_value(true)
+         , "Spatially-varying bottom LOD for a DEM (metanode-store mode): "
+         "drop tiles finer than the target GSD resolves at their own "
+         "location. '--prune false' tiles the full lod range everywhere.")
+        ("skipPartial", po::value(&config_.skipPartial)
+         ->default_value(config_.skipPartial)->implicit_value(true)
+         , "Suppress the mesh of non-watertight (partial) tiles for a DEM "
+         "(metanode-store mode), so a global surface can fill the holes.")
         ;
 
     config.add_options()
@@ -890,7 +908,9 @@ int SetupResource::run()
             << "overlap of " << *cm.xOverlap << " pixels.";
     }
 
-    // apply bottom LOD
+    // apply bottom LOD (remember the measured floor so the prune can be
+    // extended by an operator-forced deeper floor)
+    const auto measuredMaxLod(cm.lodRange.max);
     if (config.bottomLod) {
         cm.lodRange.max = std::max(cm.lodRange.max, *config.bottomLod);
     }
@@ -973,6 +993,16 @@ int SetupResource::run()
         tiling::UnifiedConfig unifiedConfig;
         unifiedConfig.metaBinaryOrder = rf->metaBinaryOrder;
         unifiedConfig.geoidGrid = config.geoidGrid;
+        unifiedConfig.skipPartial = config.skipPartial;
+        if (config.prune) {
+            unifiedConfig.pruneGsd = cm.targetGsd;
+            // an operator floor deeper than the measured one must survive
+            // the prune: grant that many extra local LODs
+            if (cm.lodRange.max > measuredMaxLod) {
+                unifiedConfig.pruneExtraLods
+                    = cm.lodRange.max - measuredMaxLod;
+            }
+        }
 
         const auto result
             (tiling::generateUnified(mainDataset, *rf, cm.lodRange
