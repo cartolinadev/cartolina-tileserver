@@ -64,11 +64,12 @@ cleared with it. `mapproxy-tiling --skipPartial` relies on this — it
 clears the whole value of a partial tile rather than leaving a stray
 flag.
 
-Clearing a tile does not automatically clear its descendants. `skipPartial`
-therefore needs a bottom-up closure pass: retain a geometry-less structural
-node only while it leads to geometry, and remove geometry-less leaves and
-their now-empty ancestors. That pass is not yet implemented; see the open
-correctness item in [the backlog](backlog.md).
+Clearing a tile does not clear its descendants — and does not need to.
+The hierarchy the client traverses is not stored in the index at all:
+metatile child flags are derived from it per request, and an all-zero
+subtree is never advertised, so a suppressed branch with no geometry
+below is unreachable rather than a dangling leaf. See
+[Child existence: derived, not stored](#child-existence-derived-not-stored).
 
 The `reference` value reported by `getReference` (line 106) is **not**
 in this byte; it is stored as `flags >> 16`, in memory only, and is
@@ -216,3 +217,47 @@ the combine is an intersection, at any LOD coarser than the tiling's
 minimum the tiling side is empty and the result is empty there. The code
 documents the assumption that this does not happen: `// NB: tiling
 *should* be from root` (`support/tileindex.cpp`).
+
+
+## Child existence: derived, not stored
+
+A tile index holds no parent–child information. Each LOD layer is an
+independent quadtree; nothing in the format links LOD *n* to LOD *n*+1.
+The delivery hierarchy the client traverses exists in exactly one place —
+the child flags of served metatiles — and those are computed per request,
+never stored.
+
+When mapproxy builds a metatile (store path
+`generator/metatile-store.cpp`, warp path `generator/metatile.cpp` — both
+identically), each node's four child bits are filled by asking the served
+index `validSubtree(child)` (`support/mmapped/tileindex.cpp`): walk every
+LOD layer from `child.lod` to the deepest, and test whether any nonzero
+flag value exists inside the child's footprint at that layer. The
+footprint query into a deeper layer is a trimmed quadtree descent
+(`support/mmapped/qtree.cpp`): a uniform region answers with its value; a
+region with internal structure answers `any` — correct because uniform
+regions are collapsed, so internal structure implies a nonzero value
+below. The cost is a short descent per layer, not a tile enumeration: an
+all-zero subtree of any size is a single collapsed node per layer.
+
+Two consequences are worth stating explicitly.
+
+**Reachability closure.** The client learns of children only through
+these bits; there is no other channel. Since every nonzero entry carries
+`mesh`, `validSubtree` is literally "is there a mesh somewhere below" —
+so every advertised branch terminates in geometry, and a subtree with no
+mesh anywhere (for example one whose partial tiles `--skipPartial`
+suppressed) is never advertised at all. The bottom-up closure over
+suppressed tiles is therefore a serve-time derivation; the published
+index needs none materialized. A suppressed tile on a branch that does
+lead to deeper geometry is served as a *structural* metanode: zero own
+flags, child bits pointing toward the geometry, and (store path) its
+stored coverage envelope as `geomExtents` so client-side culling can
+decide the descent.
+
+**The invariant is discipline, not format.** `validSubtree` tests "any
+flag", not "mesh": the format would happily hold a navtile-only entry,
+and a writer emitting nonzero meshless entries would break the closure by
+advertising branches with nothing at their end. Every nonzero entry must
+stay mesh-bearing — which is also why `skipPartial` zeroes the whole
+value instead of clearing the mesh bit alone.

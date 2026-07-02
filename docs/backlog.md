@@ -13,21 +13,36 @@ New entries are added directly below this introduction, newest first.
 ## P1 CORRECTNESS: `skipPartial` must remove geometry-less leaves
 
 **Opened:** 2026-07-02
-**Status:** open; `--skipPartial` is not safe for client delivery.
+**Status:** resolved 2026-07-02 — the premise did not hold; the adjacent
+real defect (degenerate structural-node extents) is fixed instead.
 
-`skipPartial` clears each partial tile's mesh, watertight, and navtile flags,
-but the tiling pass does not close the resulting delivery hierarchy from the
-leaves upward. A suppressed tile is useful only when it is a structural node
-leading to geometry at a deeper LOD. A suppressed tile with no such geometry
-is a geometry-less leaf, which the client cannot handle and which has no
-reason to exist.
+The premise was that suppressed tiles survive in the delivery hierarchy as
+flagged-but-meshless entries, so a branch with no geometry below ends in a
+geometry-less leaf the client can reach. Neither half holds:
 
-Build the delivery hierarchy bottom-up during tiling and reflagging. Remove
-every geometry-less leaf, propagate that removal through ancestors that then
-become geometry-less leaves themselves, and retain a geometry-less node only
-when at least one child branch ultimately leads to a mesh. Cover both ordinary
-generation and `--reflag --skipPartial true`, and verify that the resulting
-hierarchy contains no geometry-less leaf.
+- A tile index entry has no existence bit separate from its flags.
+  `skipPartial` zeroes the whole entry, and a zero entry is byte-identical
+  to a tile that never existed. Every nonzero entry carries `mesh`.
+- The client learns of children only through metatile child flags, and both
+  serve paths compute those per request as `validSubtree(child)` — "any
+  nonzero entry anywhere below this child". Because nonzero implies mesh,
+  every advertised branch terminates in geometry, and an all-zero subtree is
+  never advertised. That is exactly the bottom-up closure this entry asked
+  for, derived at serve time; the published pair needs none materialized.
+  The mechanism is documented in [tile-index.md](tile-index.md).
+
+The concern did brush against a real defect: the store serve path emitted
+structural metanodes (zero flags, store payload present — i.e. suppressed
+partial tiles on branches leading to deeper geometry) with default
+`geomExtents` (±inf/NaN heights). cartolina-js builds its culling volume
+from the division-node span plus exactly those heights, so correct
+rendering depended on NaN comparisons failing open — one client refactor
+away from culling all boundary detail. The warp path was never affected (it
+fills extents from DEM samples independently of index flags). Fixed in
+`generator/metatile-store.cpp`: any payload-bearing node now serves its
+stored coverage envelope, which the mip ascent built as an aggregate over
+the tile's full coverage — a conservative superset of every descendant mesh
+envelope.
 
 ## CORRECTNESS (tileserver): the store serve path must not depend on warp fallback
 

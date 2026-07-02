@@ -134,11 +134,13 @@ the resource remains unavailable until its definition and artifacts match.
 navtile; `watertight` was already false. The source data is unchanged.
 
 Surviving descendants keep their own entries, so a suppressed tile can be a
-geometry-less step toward deeper geometry. The current tiling pass does not
-perform the required bottom-up closure that removes geometry-less leaves and
-propagates their removal to their parents. Do not enable `--skipPartial` for
-client delivery until the open correctness item in [the backlog](backlog.md)
-is resolved.
+geometry-less step toward deeper geometry. No tiling-side closure pass is
+needed: metatile child flags are derived from the delivery index at serve
+time, and a suppressed subtree with no geometry below is never advertised
+to the client (see [tile-index.md](tile-index.md)). A suppressed tile on a
+branch that does lead to geometry is served as a structural metanode
+carrying its stored coverage envelope, which bounds every descendant mesh,
+so client-side culling descends the branch correctly.
 
 Without suppression, a global base surface already fills the uncovered part
 of a partial tile, but the partial mesh can leave cracks at its boundary and

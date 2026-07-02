@@ -5,6 +5,35 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-02 — skipPartial reachability analysis; structural-node extents fix
+
+Re-examined the "geometry-less leaves" P1 backlog item against the whole
+pipeline: tiling pass, delivery-index preparation, both metatile serve paths,
+and the cartolina-js RFC 9 traversal. The premise does not hold. A suppressed
+tile's index entry is zero — byte-identical to absence (the index has no
+existence bit separate from the flags) — and metatile child flags are derived
+per request via `validSubtree`, which never advertises an all-zero subtree.
+Since every nonzero entry carries `mesh`, every advertised branch terminates
+in geometry: the bottom-up closure the item demanded already exists as a
+serve-time derivation. Verified down to the mmapped quadtree trimmed-descent
+semantics (internal structure implies a nonzero value below, by uniform
+collapse). The mechanism is now documented in
+[tile-index.md](tile-index.md) ("Child existence: derived, not stored").
+
+The review did brush against a real defect, latent since the store serve
+path was introduced: `metatileFromStore` emitted structural metanodes
+(suppressed partial tiles on branches leading to deeper geometry) with
+default `geomExtents` — ±inf/NaN heights. cartolina-js builds its culling
+volume from the division-node span plus exactly those heights, so rendering
+survived only because NaN comparisons fail open; `skipPartial` created the
+first such nodes deep enough to be actually culled (coarse unproductive-block
+nodes sit above the client's minimum culling depth). The warp path was never
+affected — it fills extents from DEM samples independently of index flags.
+Fixed: any payload-bearing node now serves its stored coverage envelope,
+whose mip-built min/max aggregates the tile's full coverage and is therefore
+a conservative superset of every descendant mesh envelope. Resolved the
+backlog item with the corrected diagnosis.
+
 ## 2026-07-02 — prune final-range and reflag safety follow-up
 
 Closed three review findings in the merged calipers/tiling workflow. A spatial
@@ -26,10 +55,10 @@ instruction. Documentation distinguishes the authoritative served flags in
 the tile index from the store's raw coverage and min/max height. The existing
 store byte is now named `coverage` (`none`, `partial`, `full`) throughout code
 and diagnostics; its binary values and format are unchanged.
-Review found that `skipPartial` does not materialize a bottom-up-closed
-delivery hierarchy during tiling. Geometry-less leaves must be removed and
-that removal propagated upward before this option is safe for clients; the
-correctness work is tracked in the backlog.
+Review flagged `skipPartial` as unsafe for clients on the theory that the
+tiling pass must materialize a bottom-up-closed delivery hierarchy; a
+same-day re-examination found the premise invalid and resolved the backlog
+item (see the entry above).
 
 ## 2026-07-02 — merge calipers into mapproxy-tiling; prune, skipPartial, reflag
 
@@ -68,8 +97,8 @@ differs). The GSD model is simplified to native `gsd` + derived `targetGsd`
 (dropped `gsdOverride` and the `invGsdScale` concept). `mapproxy-setup-resource`
 gains `--prune`/`--skipPartial`. Serving is unchanged — both options shape only
 the flag index. Serve-time child flags derive reachability from that index;
-the later review above found that this does not replace the required
-tiling-time bottom-up closure.
+the reachability analysis above establishes that this derivation is the
+bottom-up closure, so no tiling-time pass is needed.
 
 Moved the tile-index reference from the wiki into these tileserver docs (it is
 server-side). Filed a backlog item: the store serve path must not depend on the

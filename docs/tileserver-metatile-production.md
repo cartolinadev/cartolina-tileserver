@@ -186,7 +186,11 @@ server:
    configured LOD range).
 2. For each node, takes the policy-applied mesh/watertight/navtile flags from
    the paired delivery index and min/max height from the store, then serialises
-   those with the derived-at-delivery fields into the v6 metatile. **No warp.**
+   those with the derived-at-delivery fields into the v6 metatile. A node whose
+   index entry is zero but whose store payload exists (a `skipPartial`
+   suppressed tile) is a structural node: it is serialised with its stored
+   coverage envelope, which bounds every descendant mesh, so client-side
+   culling can decide the descent toward the deeper geometry. **No warp.**
 3. Returns the v6 binary as the HTTP response.
 
 Fields not stored are produced at delivery: the **surrogate** is the

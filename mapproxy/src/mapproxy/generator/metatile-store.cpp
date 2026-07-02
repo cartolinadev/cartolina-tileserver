@@ -493,23 +493,36 @@ metatileFromStore(const vts::TileId &tileId
 
                 setChildren(block, nodeId, node);
 
-                if (geometry || navtile) {
-                    // real tile: needs stored payload
-                    if (!havePage) {
-                        LOG(warn3)
-                            << "Metanode store has no page for metatile "
-                            << tileId << " with real tiles; falling "
-                            "back to warp.";
-                        return boost::none;
-                    }
-                    const auto &data(page.node(nodeId));
-                    if (!data) {
-                        LOG(warn3)
-                            << "Metanode store page " << page.root()
-                            << " has no payload for real tile "
-                            << nodeId << "; falling back to warp.";
-                        return boost::none;
-                    }
+                const bool real(geometry || navtile);
+
+                if (real && !havePage) {
+
+                    LOG(warn3)
+                        << "Metanode store has no page for metatile "
+                        << tileId << " with real tiles; falling "
+                        "back to warp.";
+                    return boost::none;
+                }
+
+                // A real tile must have stored payload. A zero-flag
+                // node with payload is a structural node (a partial
+                // tile suppressed by skipPartial): its stored coverage
+                // envelope bounds every descendant mesh, so it is
+                // served too — client-side culling needs it to decide
+                // the descent toward that geometry. A node with
+                // neither is empty space: flags and children only.
+                const auto data(havePage ? page.node(nodeId)
+                                : mnstore::NodeData());
+                if (real && !data) {
+
+                    LOG(warn3)
+                        << "Metanode store page " << page.root()
+                        << " has no payload for real tile "
+                        << nodeId << "; falling back to warp.";
+                    return boost::none;
+                }
+
+                if (data) {
 
                     const double minZ(data.min());
                     const double maxZ(data.max());
