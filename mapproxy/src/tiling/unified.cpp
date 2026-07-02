@@ -32,6 +32,7 @@
 #include <deque>
 #include <fstream>
 #include <future>
+#include <functional>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -75,36 +76,63 @@ namespace {
 
 typedef vts::TileIndex::Flag TiFlag;
 
-/** Counting semaphore gating concurrent filter-pass warps (C++17 has
- *  no std::counting_semaphore).
+/** Bounded FIFO executor for filter-pass warps.
  */
-class WarpSlots {
+class WarpPool {
 public:
-    WarpSlots(int slots) : slots_(slots) {}
+    WarpPool(int workers) {
 
-    class Guard {
-    public:
-        Guard(WarpSlots &slots) : slots_(slots) {
-            std::unique_lock<std::mutex> lock(slots_.mutex_);
-            slots_.free_.wait(lock, [&]() { return slots_.slots_ > 0; });
-            --slots_.slots_;
+        threads_.reserve(workers);
+        for (int index(0); index < workers; ++index)
+            threads_.emplace_back([this]() { run(); });
+    }
+
+    ~WarpPool() {
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
         }
-        ~Guard() {
-            {
-                std::lock_guard<std::mutex> lock(slots_.mutex_);
-                ++slots_.slots_;
-            }
-            slots_.free_.notify_one();
+        ready_.notify_all();
+        for (auto &thread : threads_) thread.join();
+    }
+
+    std::future<cv::Mat> submit(std::function<cv::Mat()> function) {
+
+        auto task(std::make_shared<std::packaged_task<cv::Mat()>>
+                  (std::move(function)));
+        auto future(task->get_future());
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            tasks_.emplace_back([task]() { (*task)(); });
         }
-    private:
-        WarpSlots &slots_;
-    };
+        ready_.notify_one();
+        return future;
+    }
 
 private:
-    friend class Guard;
+    void run() {
+
+        while (true) {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                ready_.wait(lock, [&]() {
+                    return stopping_ || !tasks_.empty();
+                });
+                if (stopping_ && tasks_.empty()) return;
+                task = std::move(tasks_.front());
+                tasks_.pop_front();
+            }
+            task();
+        }
+    }
+
     std::mutex mutex_;
-    std::condition_variable free_;
-    int slots_;
+    std::condition_variable ready_;
+    std::deque<std::function<void()>> tasks_;
+    std::vector<std::thread> threads_;
+    bool stopping_ = false;
 };
 
 /** Sentinel marking elevation cells with no valid source data; far
@@ -510,6 +538,8 @@ cv::Mat filterPass(const fs::path &srcPath
                    , const char *resampling
                    , const std::string &what)
 {
+    LOG(info3) << "Filter pass " << what << ": started.";
+
     // pass-private dataset handle: the four passes run concurrently
     // and GDAL dataset handles are not thread-safe
     const GdalHandle source(srcPath);
@@ -622,14 +652,13 @@ public:
         storeHeader_.metaBinaryOrder = config.metaBinaryOrder;
         storeHeader_.metaDepth = config.metaDepth;
 
-        /* All (division node, pass) warps go into one pool so the
-         * lighter mask passes of one node fill the streams the long
-         * elevation passes of another leave idle; reduction and
-         * emission stay sequential in node order (they touch the
-         * shared tile index and store pages).
+        /* All elevation warps enter the bounded FIFO pool before mask
+         * warps. The main thread reduces each node as soon as all its
+         * passes finish; reduction remains single-threaded because it
+         * writes the shared tile index and store pages.
          */
-        WarpSlots slots(config.warpConcurrency);
         std::deque<NodeJob> jobs;
+        WarpPool pool(config.warpConcurrency);
         for (const auto &item : referenceFrame.division.nodes) {
             const auto &node(item.second);
             if (node.partitioning.mode
@@ -637,10 +666,22 @@ public:
             {
                 continue;
             }
-            prepareNode(node, slots, jobs);
+            prepareNode(node, jobs);
         }
 
-        for (auto &job : jobs) { reduceNode(job); }
+        schedulePasses(pool, jobs);
+        for (std::size_t reduced(0); reduced < jobs.size(); ++reduced) {
+            NodeJob *job;
+            {
+                std::unique_lock<std::mutex> lock(completionMutex_);
+                completion_.wait(lock, [&]() {
+                    return !completedJobs_.empty();
+                });
+                job = completedJobs_.front();
+                completedJobs_.pop_front();
+            }
+            reduceNode(*job);
+        }
     }
 
     UnifiedResult result() {
@@ -666,10 +707,20 @@ private:
         math::Size2i gridSize;
         std::shared_ptr<GsdGrid> pruneGrid;
         std::future<cv::Mat> maskMin, maskMax, elevMin, elevMax;
+        int completedPasses = 0;
     };
 
     void prepareNode(const vr::ReferenceFrame::Division::Node &node
-                     , WarpSlots &slots, std::deque<NodeJob> &jobs);
+                     , std::deque<NodeJob> &jobs);
+
+    void schedulePasses(WarpPool &pool, std::deque<NodeJob> &jobs);
+
+    std::future<cv::Mat> schedulePass
+        (WarpPool &pool, NodeJob &job, const fs::path &source
+         , GDALDataType dataType, const boost::optional<double> &nodata
+         , const char *resampling, const std::string &what);
+
+    void passCompleted(NodeJob &job);
 
     void reduceNode(NodeJob &job);
 
@@ -690,11 +741,15 @@ private:
     mnstore::Header storeHeader_;
     vts::TileIndex tileIndex_;
     std::map<vts::TileId, mnstore::Page> pages_;
+
+    std::mutex completionMutex_;
+    std::condition_variable completion_;
+    std::deque<NodeJob*> completedJobs_;
 };
 
 void UnifiedPass::prepareNode
     (const vr::ReferenceFrame::Division::Node &node
-     , WarpSlots &slots, std::deque<NodeJob> &jobs)
+     , std::deque<NodeJob> &jobs)
 {
     if (node.id.lod > lodRange_.max) { return; }
     const auto srsDefinition(vr::system.srs(node.srs).srsDef);
@@ -752,51 +807,93 @@ void UnifiedPass::prepareNode
         << " (srs: " << node.srs << "), leaf range "
         << leafLod << "/" << *leafRange << ".";
 
-    /* The four one-pixel-per-tile filter passes (RFC 7 section 4.2);
-     * nodata rule per section 4.3: mask passes carry no source nodata
-     * (the VRT mask band has none) with destinations initialized to
-     * 0, elevation passes inherit source nodata so invalid pixels
-     * cannot poison the range. Elevation passes are scheduled first:
-     * they dominate (full-depth decompression), so the lighter mask
-     * passes backfill free slots.
-     */
-    // capture geometry by value: the jobs container may reallocate
-    // while warps are in flight
+}
+
+std::future<cv::Mat> UnifiedPass::schedulePass
+    (WarpPool &pool, NodeJob &job, const fs::path &source
+     , GDALDataType dataType, const boost::optional<double> &nodata
+     , const char *resampling, const std::string &what)
+{
     const auto srsDef(job.srsDef);
     const auto gridSize(job.gridSize);
     const auto extents(job.extents);
-    const auto pass([srsDef, gridSize, extents, &slots]
-                    (const fs::path &source, GDALDataType dataType
-                     , const boost::optional<double> &nodata
-                     , const char *resampling, std::string what)
-    {
-        return std::async(std::launch::async
-                          , [=, &slots]() {
-            WarpSlots::Guard guard(slots);
-            return filterPass(source, srsDef, gridSize, extents
-                              , dataType, nodata, resampling, what);
-        });
-    });
+    return pool.submit([this, &job, source, dataType, nodata, resampling
+                        , what, srsDef, gridSize, extents]() {
 
-    const auto name([&](const char *what)
-    {
-        std::ostringstream os;
-        os << node.id << " " << what;
-        return os.str();
-    });
+        try {
 
-    // coverage (imagery) mode needs only the mask passes; skip the
-    // DEM elevation passes and the store they feed
-    if (!config_.coverage) {
-        job.elevMin = pass(dataset_, GDT_Float32, ElevationNodata, "min"
-                           , name("elevation min"));
-        job.elevMax = pass(dataset_, GDT_Float32, ElevationNodata, "max"
-                           , name("elevation max"));
+            auto result(filterPass(source, srsDef, gridSize, extents
+                                   , dataType, nodata, resampling, what));
+            passCompleted(job);
+            return result;
+
+        } catch (...) {
+
+            passCompleted(job);
+            throw;
+        }
+    });
+}
+
+void UnifiedPass::passCompleted(NodeJob &job)
+{
+    std::lock_guard<std::mutex> lock(completionMutex_);
+    ++job.completedPasses;
+    const int required(config_.coverage ? 2 : 4);
+    if (job.completedPasses == required) {
+        completedJobs_.push_back(&job);
+        completion_.notify_one();
     }
-    job.maskMin = pass(maskVrt_.path(), GDT_Byte, boost::none, "min"
-                       , name("mask min"));
-    job.maskMax = pass(maskVrt_.path(), GDT_Byte, boost::none, "max"
-                       , name("mask max"));
+}
+
+void UnifiedPass::schedulePasses
+    (WarpPool &pool, std::deque<NodeJob> &jobs)
+{
+    /* The four one-pixel-per-tile filter passes follow RFC 7 sections
+     * 4.2 and 4.3. Elevation dominates because it decompresses the
+     * full source data; globally queue it first so mask work fills the
+     * tail instead of delaying the long critical path.
+     */
+    std::vector<NodeJob*> order;
+    order.reserve(jobs.size());
+    for (auto &job : jobs) order.push_back(&job);
+    std::stable_sort(order.begin(), order.end()
+                     , [](const NodeJob *left, const NodeJob *right) {
+
+        const auto cells([](const NodeJob *job) {
+
+            return std::uint64_t(job->gridSize.width)
+                * std::uint64_t(job->gridSize.height);
+        });
+        return cells(left) > cells(right);
+    });
+
+    if (!config_.coverage) {
+        for (auto *job : order) {
+            const auto name(str(boost::format("%s elevation min")
+                                % job->node.id));
+            job->elevMin = schedulePass
+                (pool, *job, dataset_, GDT_Float32, ElevationNodata, "min"
+                 , name);
+            const auto maxName(str(boost::format("%s elevation max")
+                                   % job->node.id));
+            job->elevMax = schedulePass
+                (pool, *job, dataset_, GDT_Float32, ElevationNodata, "max"
+                 , maxName);
+        }
+    }
+
+    for (auto *job : order) {
+        const auto name(str(boost::format("%s mask min") % job->node.id));
+        job->maskMin = schedulePass
+            (pool, *job, maskVrt_.path(), GDT_Byte, boost::none, "min"
+             , name);
+        const auto maxName
+            (str(boost::format("%s mask max") % job->node.id));
+        job->maskMax = schedulePass
+            (pool, *job, maskVrt_.path(), GDT_Byte, boost::none, "max"
+             , maxName);
+    }
 }
 
 void UnifiedPass::reduceNode(NodeJob &job)

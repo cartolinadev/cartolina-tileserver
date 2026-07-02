@@ -1,3 +1,29 @@
+cartolina-tileserver (1.119metanodestore) testing; urgency=medium
+
+  * merge mapproxy-calipers into mapproxy-tiling: a bare run now surveys the
+    dataset and prints a resource template; --apply produces the artifacts;
+    remove the standalone mapproxy-calipers binary
+  * derive per-node LOD from target GSD and node-centre projection scale,
+    avoiding inflated or asymmetric depth across congruent QSC faces
+  * add DEM --prune, --skipPartial and --reflag workflows; prune complete
+    sibling sets and add mapproxy-mnstore check for old unsafe stores
+  * harden metanode-store serving: rebuild stale derived delivery indexes,
+    serve valid extents for structural nodes and avoid probing legacy DEM
+    pyramids while a store is active
+  * validate geoid grids through PROJ before tiling and resource setup;
+    log the resolved tiling grid and propagate prune and partial-tile policy
+    through setup-resource
+  * improve mapproxy-tidiff range handling and metanode-store diagnostics
+  * fix duplicated revisions in surface metatile URLs and suppress benign
+    GDAL transform noise
+  * schedule unified filter passes through a bounded FIFO worker pool,
+    prioritise larger elevation passes, reduce completed nodes promptly, use
+    all reported hardware threads by default and log dataset/pass starts
+  * add in-repository tileserver operator, implementation, tool, tile-index,
+    backlog and session documentation
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 02 Jul 2026 23:53:59 +0200
+
 cartolina-tileserver (1.118metanodestore) testing; urgency=medium
 
   * mapproxy-tiling: correct use the new unified approach for imagery (the "ophoto" path)

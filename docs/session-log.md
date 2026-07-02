@@ -5,6 +5,34 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-02 — schedule unified tiling by critical path
+
+The unified tiling pass now uses a bounded FIFO worker pool instead of one
+thread per filter pass blocked behind a semaphore. The semaphore made pass
+ordering nondeterministic: a mask thread could acquire a slot before an
+earlier elevation thread, despite elevation being the longer operation.
+All elevation passes across division nodes now enter the queue before the
+lighter mask passes, largest destination grids first. This keeps the long work
+on the critical path and leaves mask work to fill its tail.
+
+Division-node reduction is still single-threaded because it writes the shared
+tile index and store pages, but it no longer waits for nodes in definition
+order. The main thread reduces the next node whose complete set of filter
+passes finishes while the remaining warps continue in the worker pool.
+
+Dry and apply runs now log the dataset path at `info4` before probing and
+measuring it, so long surveys identify their input immediately. The completed
+measurement report retains its dataset path and detected type.
+They also log the resolved geoid grid at `info3`, including `none`, after
+reference-frame defaults are applied and the selected grid is validated.
+
+Default warp concurrency now uses all hardware threads reported by the
+standard library. Operators can lower it with `--warpConcurrency`; systems
+that do not report hardware concurrency retain the fallback of four.
+
+Each filter pass now logs when a worker starts it, before the first 10-percent
+progress milestone, making the scheduler's queue progression visible.
+
 ## 2026-07-02 — prune siblings together
 
 Pruning and `--reflag` now keep or remove all siblings together. Added

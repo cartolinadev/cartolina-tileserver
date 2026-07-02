@@ -651,6 +651,8 @@ int Tiling::runImpl()
 
     if (reflag_) { return runReflag(rf); }
 
+    LOG(info4) << "Processing dataset " << dataset_ << ".";
+
     // Resolve the geoid grid: an explicit value wins, an explicit empty
     // string means "no geoid", an omitted grid falls back to the
     // reference frame body default. Fail fast on a grid PROJ cannot read.
@@ -663,6 +665,10 @@ int Tiling::runImpl()
         unifiedConfig_.geoidGrid = boost::none;
     }
     validateGeoidGrid(unifiedConfig_.geoidGrid);
+    LOG(info3)
+        << "Geoid grid: "
+        << (unifiedConfig_.geoidGrid
+            ? *unifiedConfig_.geoidGrid : std::string("none")) << ".";
 
     const auto ds(probe(dataset_, vectorResolution_));
     auto m(calipers::measure(rf, ds, calipersConfig_));

@@ -119,7 +119,7 @@ struct UnifiedConfig {
      */
     static int defaultWarpConcurrency() {
         const auto cores(std::thread::hardware_concurrency());
-        return std::min(12, cores ? int(cores) : 4);
+        return cores ? int(cores) : 4;
     }
 
     int warpConcurrency = defaultWarpConcurrency();
