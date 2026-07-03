@@ -8,6 +8,24 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-03 — data tools: log directory and startup banner convention
+
+Data-writing tools (as opposed to mere inspection/diagnostic tools) now get
+a durable, self-describing run record. `service::Program` gained an
+opt-in `operatingDirectory()` hook (in the shared `libservice` submodule):
+when a tool overrides it, an unspecified `--log.file` defaults to
+`<dir>/log/<tool>-<timestamp>.log`, and the tool logs a startup banner
+(complete command line, working directory, resolved configuration in ini
+form) before anything else. Tools that don't override the hook are
+unaffected.
+
+`mapproxy-tiling` is the first tool wired up, pointed at its dataset
+directory. Only `--apply` runs get the log trace; a dry survey is a
+diagnostic report only and stays silent, matching its read-only nature.
+
+Other data-writing tools (e.g. `mapproxy-setup-resource`) are candidates
+for the same convention but have not been converted yet.
+
 ## 2026-07-03 — height-sidecar semantic scrub
 
 The semantic scrub landed, format-neutral (still v2):

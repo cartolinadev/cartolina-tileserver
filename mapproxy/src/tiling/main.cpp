@@ -199,6 +199,9 @@ private:
 
     void configure(const po::variables_map &vars);
 
+    boost::optional<fs::path>
+    operatingDirectory(const po::variables_map &vars) const;
+
     bool help(std::ostream &out, const std::string &what) const;
 
     int run();
@@ -327,6 +330,23 @@ void Tiling::configuration(po::options_description &cmdline
         ;
 
     (void) config;
+}
+
+boost::optional<fs::path>
+Tiling::operatingDirectory(const po::variables_map &vars) const
+{
+    // Without --apply this is a dry survey: a diagnostic report only, not
+    // a data-writing run, so it must not leave a log trace.
+    if (!vars.count("apply")) { return boost::none; }
+
+    // mapproxy-tiling writes data (the flag tile index and metanode store)
+    // into the dataset directory named by the "input" argument; that's
+    // where the log/ subdirectory and startup banner belong. "input" may
+    // also name a single raw dataset file (--output/--store then
+    // required); use its parent directory in that case.
+    if (!vars.count("input")) { return boost::none; }
+    const auto dir(fs::absolute(vars["input"].as<fs::path>()));
+    return fs::is_directory(dir) ? dir : dir.parent_path();
 }
 
 void Tiling::configure(const po::variables_map &vars)
