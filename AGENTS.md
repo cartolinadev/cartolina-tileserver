@@ -214,6 +214,25 @@ The externals under [externals/](externals/) are git submodules (see
   `git ls-tree <branch> externals/<sub>`.
 
 
+## Data-writing tools
+
+A tool that writes data (as opposed to a mere inspection/diagnostic tool)
+must override `service::Program::operatingDirectory()` (declared in the
+`libservice` submodule) to point at the directory it operates in. That
+hook is what gives every real run a durable, self-describing record:
+
+- an unspecified `--log.file` defaults to
+  `<dir>/log/<tool>-<timestamp>.log` instead of going nowhere;
+- the tool logs a startup banner (complete command line, working
+  directory, and the resolved configuration in ini form) before anything
+  else it logs.
+
+Gate the override on whatever flag distinguishes a real run from a dry
+run or diagnostic report (e.g. `mapproxy-tiling`'s `--apply`), so
+read-only invocations stay silent. `mapproxy-tiling`
+(`mapproxy/src/tiling/main.cpp`) is the reference implementation.
+
+
 ## Commits
 
 - The committed pre-commit hook requires `docs/session-log.md` to be staged.
