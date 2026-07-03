@@ -5,6 +5,7 @@ set(mapproxy-core_SOURCES
   resource.hpp resource.cpp
   support/metatile.hpp support/metatile.cpp
   support/mesh.hpp support/mesh.cpp
+  support/srs.hpp support/srs.cpp
   support/geo.hpp support/geo.cpp
   support/coverage.hpp support/coverage.cpp
   support/tileindex.hpp support/tileindex.cpp

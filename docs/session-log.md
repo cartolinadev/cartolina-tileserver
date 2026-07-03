@@ -8,6 +8,16 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-04 — split SRS/geoid helpers out of mesh.cpp into srs.cpp
+
+`support/srs.hpp` had never had its own `.cpp`; every function it declares
+(`sds2phys`, `sds2nav`, `sds()`, `sdsg2sdsr`, `phys2sds`,
+`validateGeoidGrid`, `physicalCorners`, `nodeTangentSpace`) was defined in
+`support/mesh.cpp` instead, a convention dating back to when SRS handling
+was first split out of the mesh code. None of them touch `geometry::Mesh`.
+Added `support/srs.cpp` to hold them, matching the header, and left
+`mesh.cpp` with only actual mesh-geometry code.
+
 ## 2026-07-03 — data tools: log directory and startup banner convention
 
 Data-writing tools (as opposed to mere inspection/diagnostic tools) now get

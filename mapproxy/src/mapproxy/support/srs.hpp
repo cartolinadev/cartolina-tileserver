@@ -36,6 +36,9 @@
 
 namespace vts = vtslibs::vts;
 
+vts::CsConvertor sds2srs(const std::string &sds, const std::string &dst
+                         , const boost::optional<std::string> &geoidGrid);
+
 vts::CsConvertor sds2phys(const vts::NodeInfo &nodeInfo
                           , const boost::optional<std::string> &geoidGrid);
 
