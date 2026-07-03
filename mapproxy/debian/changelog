@@ -1,3 +1,11 @@
+cartolina-tileserver (1.121metanodestore) testing; urgency=medium
+
+  * mapproxy-tiling --apply: log to a log/ subdirectory of the dataset by
+    default, with a startup banner recording the command line, working
+    directory, and resolved configuration
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sat, 04 Jul 2026 01:27:38 +0200
+
 cartolina-tileserver (1.120metanodestore) testing; urgency=medium
 
   * metanode store: replace the coverage byte with a reserved constant;
