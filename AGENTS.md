@@ -229,6 +229,44 @@ The externals under [externals/](externals/) are git submodules (see
   even on feature or other non-main branches.
 
 
+## Building a package
+
+When asked to build a package, do the following:
+
+1. Find the previous changelog stanza in `mapproxy/debian/changelog` (the
+   topmost entry) and the commit that introduced it (search the commit log
+   around the version-bump commit message, e.g. `git log --oneline -- \
+   mapproxy/debian/changelog`). Review every commit between that commit and
+   `HEAD` and write one bullet per logical, user-visible change; skip
+   commits that only record backlog/planning notes with no behavior change.
+2. Compute the new version: increment the numeric upstream part of the
+   previous version by 1 (e.g. `1.119` -> `1.120`). Do not use
+   `dch --increment` for this — it does not understand this project's
+   suffixed version scheme and corrupts it (verified: it mangled
+   `1.119metanodestore` into `1.119metanodestorf`). Edit
+   `mapproxy/debian/changelog` by hand instead.
+3. Branch suffix: on any branch other than `main`/`master`, append the
+   branch's final path component (after the last `/`, if any) with all
+   non-alphanumeric characters stripped and lowercased, e.g.
+   `feature/metanode-store` -> `metanodestore`, giving `1.120metanodestore`.
+   On `main`/`master`, use the bare incremented number with no suffix.
+4. Write the new stanza at the top of `mapproxy/debian/changelog`:
+   `cartolina-tileserver (<version>) testing; urgency=medium`, the bullets
+   from step 1, then a blank line and a maintainer line copying the name
+   and email from the entry directly below (format:
+   ` -- Name <email>  <date -R>`).
+5. On a non-main branch: commit the changelog alone with message
+   `new package version <version>`, then tag that commit
+   `debian/<version>` (plain `git tag`, not `make dtag` — that target is
+   declared but not implemented). On `main`/`master`: prepare the
+   changelog but do not commit or tag unless the user explicitly asks.
+6. Build with `make deb` from `mapproxy/`. The resulting `.deb` files land
+   one directory up (the repository root), one each for
+   `cartolina-tileserver`, `cartolina-tileserver-dbg` and
+   `cartolina-tileserver-tools`, named
+   `<package>_<version>-0<DEB_RELEASE>_<arch>.deb`.
+
+
 ## Code and refactoring philosophy
 
 Common to the entire project (shared with
