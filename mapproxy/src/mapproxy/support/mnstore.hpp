@@ -40,19 +40,22 @@ namespace vts = vtslibs::vts;
 
 /** RFC 7 metanode store (rfc-metanode-store.md).
  *
- * A paged, mmappable artifact holding raw per-tile metadata from the unified
- * tiling pass: source coverage (absent, partial or full) and the SDS height
- * range. The paired flag tile index holds the policy-applied delivery view
- * (mesh/watertight/navtile flags and reachable subtrees) consumed through
- * served metanodes. Both artifacts are written by one tiling run and bound by
- * a pairing digest.
+ * A paged, mmappable height sidecar of the flag tile index. The index
+ * is the sole authority for tile existence and delivered flags
+ * (mesh/watertight/navtile; metanode existence and child flags are
+ * derived from it at delivery). The store carries the one thing the
+ * index cannot: for every node the index serves, the source height
+ * range over its cell — including geometry-less structural nodes,
+ * whose range bounds every descendant mesh. Both artifacts are
+ * written by one tiling run and bound by a pairing digest.
  *
  * A page is one metatile delivery unit in the resource's effective
  * packaging (effective metaBinaryOrder/metaDepth): metaDepth level
  * grids, each encoded as a two-dimensional local quadtree with uniform
  * quadrants collapsed. Page keys are metatile root ids: the tile's
  * ancestor at the root LOD with x/y masked by ~((1 << order) - 1) and
- * root LODs at lod % metaDepth == 0.
+ * root LODs at lod % metaDepth == 0. Node presence is defined by the
+ * page encoding's quadrant tags.
  *
  * Stored heights are in the geoid-shifted SDS vertical declared by
  * the header's geoidGrid (orthometric; raw SDS when no geoid grid is
@@ -64,21 +67,14 @@ namespace vts = vtslibs::vts;
  */
 namespace mnstore {
 
-/** Raw per-node metadata. Coverage::none means "no node here". Coverage
- *  describes the source analysis result, not the served delivery policy;
- *  the paired tile index supplies served flags.
+/** Node payload: the height range. A default-constructed node is
+ *  absent — the paired index does not reach the tile and no payload is
+ *  stored for it.
  */
 struct NodeData {
-    /** Source coverage classification. Values preserve the existing binary
-     *  encoding: partial was mesh, full was mesh|watertight.
+    /** True when the node carries payload.
      */
-    enum class Coverage : std::uint8_t {
-        none = 0x00
-        , partial = 0x01
-        , full = 0x03
-    };
-
-    Coverage coverage;
+    bool present;
 
     /** Height range in the store's vertical datum (geoid-shifted
      *  SDS), half-float encoded.
@@ -86,12 +82,12 @@ struct NodeData {
     std::uint16_t minZ;
     std::uint16_t maxZ;
 
-    NodeData() : coverage(Coverage::none), minZ(), maxZ() {}
+    NodeData() : present(false), minZ(), maxZ() {}
 
-    explicit operator bool() const { return coverage != Coverage::none; }
+    explicit operator bool() const { return present; }
 
     bool operator==(const NodeData &other) const {
-        return ((coverage == other.coverage) && (minZ == other.minZ)
+        return ((present == other.present) && (minZ == other.minZ)
                 && (maxZ == other.maxZ));
     }
     bool operator!=(const NodeData &other) const {
@@ -99,10 +95,11 @@ struct NodeData {
     }
 
     /** Quantises a height range, biasing outward to the next
-     *  representable half so the stored range is conservative.
+     *  representable half so the stored range is conservative, and
+     *  marks the node present.
      *
-     * @param min height range minimum (raw SDS)
-     * @param max height range maximum (raw SDS)
+     * @param min height range minimum (store datum)
+     * @param max height range maximum (store datum)
      */
     void heightRange(double min, double max);
 
@@ -181,7 +178,7 @@ public:
      * @param level page level in [0, metaDepth)
      * @param x column within level grid
      * @param y row within level grid
-     * @return node data; coverage is none if no node
+     * @return node data; absent (false) if no node
      */
     NodeData& node(unsigned int level, unsigned int x, unsigned int y);
     const NodeData& node(unsigned int level, unsigned int x
@@ -190,7 +187,7 @@ public:
     /** Node accessor by global tile id (must belong to this page).
      *
      * @param tileId global tile id
-     * @return node data; coverage is none if no node
+     * @return node data; absent (false) if no node
      */
     NodeData& node(const vts::TileId &tileId);
     const NodeData& node(const vts::TileId &tileId) const;

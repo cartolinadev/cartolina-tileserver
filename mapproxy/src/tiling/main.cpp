@@ -205,8 +205,6 @@ private:
 
     int runImpl();
 
-    int runReflag(const vr::ReferenceFrame &rf);
-
     void report(const calipers::Measurement &m
                 , const vr::ReferenceFrame &rf, std::ostream &out) const;
 
@@ -224,10 +222,7 @@ private:
 
     bool apply_ = false;
     bool prune_ = true;
-    bool pruneGiven_ = false;
     bool skipPartial_ = false;
-    bool skipPartialGiven_ = false;
-    bool reflag_ = false;
 
     tiling::UnifiedConfig unifiedConfig_;
     boost::optional<unsigned int> metaBinaryOrder_;
@@ -276,17 +271,12 @@ void Tiling::configuration(po::options_description &cmdline
 
         ("apply", "Actually run the tiling and publish the artifacts. "
          "Without it the tool performs a dry survey only (measurement "
-         "report and resource-config template). In --reflag mode, --apply "
-         "rewrites the existing pair (otherwise the flip is reported only).")
-        ("reflag", "Re-flag an existing paired flag index + metanode store "
-         "in place instead of tiling: flip --skipPartial and/or retro-prune "
-         "(--gsd) without re-running the warps. No measurement is done.")
+         "report and resource-config template).")
         ("prune", po::value(&prune_)->default_value(prune_)
          ->implicit_value(true)
          , "Spatially-varying bottom LOD: drop tiles finer than the target "
          "GSD resolves at their own location (metanode/DEM path only). "
-         "'--prune false' tiles the full lod range everywhere. Reflagging "
-         "can retro-prune with --gsd but cannot undo pruning.")
+         "'--prune false' tiles the full lod range everywhere.")
         ("skipPartial", po::value(&skipPartial_)->default_value(skipPartial_)
          ->implicit_value(true)
          , "Discard non-watertight (partial) tile meshes, removing their "
@@ -370,12 +360,6 @@ void Tiling::configure(const po::variables_map &vars)
 
     apply_ = vars.count("apply");
     noexcept_ = vars.count("noexcept");
-    reflag_ = vars.count("reflag");
-    // default_value keeps boolean options present even when unset, so reflag
-    // distinguishes explicit requests via defaulted()
-    pruneGiven_ = vars.count("prune") && !vars["prune"].defaulted();
-    skipPartialGiven_ = vars.count("skipPartial")
-        && !vars["skipPartial"].defaulted();
 
     if (skipPartial_ && unifiedConfig_.forceWatertight) {
         throw po::error("--skipPartial and --forceWatertight are mutually "
@@ -396,9 +380,8 @@ void Tiling::configure(const po::variables_map &vars)
             = HeightFunction::parse(value, "heightFunction");
     }
 
-    // --apply writes artifacts and --reflag reads an existing pair, so
-    // both need resolved output/store paths
-    const bool needPaths(apply_ || reflag_);
+    // --apply writes artifacts, so it needs resolved output/store paths
+    const bool needPaths(apply_);
     if (vars.count("output")) {
         output_ = vars["output"].as<fs::path>();
     } else if (complexDataset) {
@@ -592,64 +575,9 @@ int Tiling::apply(const vr::ReferenceFrame &rf, calipers::Measurement m)
     return EXIT_SUCCESS;
 }
 
-int Tiling::runReflag(const vr::ReferenceFrame &rf)
-{
-    if (pruneGiven_ && !prune_) {
-        LOG(err3, log_)
-            << "--reflag cannot undo pruning because pruned store nodes "
-            << "are absent; rerun mapproxy-tiling with --prune false "
-            << "--apply to rebuild the artifacts.";
-        return EXIT_FAILURE;
-    }
-    if (pruneGiven_ && prune_ && !calipersConfig_.gsd) {
-        LOG(err3, log_)
-            << "--reflag --prune true needs --gsd <m> to define the "
-            << "retro-prune threshold.";
-        return EXIT_FAILURE;
-    }
-
-    if (!fs::exists(storeOutput_)) {
-        LOG(err3, log_)
-            << "No metanode store at " << storeOutput_
-            << "; --reflag applies to DEM (metanode-store) resources only.";
-        return EXIT_FAILURE;
-    }
-
-    tiling::ReflagConfig rc;
-    if (skipPartialGiven_) { rc.skipPartial = skipPartial_; }
-    if (calipersConfig_.gsd) { rc.pruneGsd = *calipersConfig_.gsd; }
-    rc.tileSampling = unifiedConfig_.tileSampling;
-
-    if (!rc.skipPartial && !rc.pruneGsd) {
-        LOG(err3, log_)
-            << "--reflag needs something to change: pass --skipPartial "
-            "<bool> and/or --gsd <m> (retro-prune).";
-        return EXIT_FAILURE;
-    }
-
-    const auto stats(tiling::reflag(dataset_, rf, output_, storeOutput_
-                                    , rc, apply_));
-
-    std::cout << "Reflag " << (apply_ ? "applied" : "(dry, use --apply)")
-              << ": examined " << stats.total << " store nodes";
-    if (rc.skipPartial && *rc.skipPartial) {
-        std::cout << ", suppressed " << stats.suppressed << " partial tiles";
-    }
-    if (rc.skipPartial && !*rc.skipPartial) {
-        std::cout << ", restored " << stats.restored << " partial tiles";
-    }
-    if (rc.pruneGsd) {
-        std::cout << ", pruned " << stats.pruned << " tiles";
-    }
-    std::cout << "." << std::endl;
-    return EXIT_SUCCESS;
-}
-
 int Tiling::runImpl()
 {
     auto rf(vr::system.referenceFrames(referenceFrame_));
-
-    if (reflag_) { return runReflag(rf); }
 
     LOG(info4) << "Processing dataset " << dataset_ << ".";
 

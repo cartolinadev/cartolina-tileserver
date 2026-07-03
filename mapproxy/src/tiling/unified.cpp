@@ -242,8 +242,9 @@ struct LodGrid {
     vts::TileRange range;
     cv::Mat exists;     // CV_8U, 0/1
     cv::Mat watertight; // CV_8U, 0/1
-    cv::Mat minZ;       // CV_32F, raw SDS
-    cv::Mat maxZ;       // CV_32F, raw SDS
+    cv::Mat served;     // CV_8U, 0/1: subtree carries an index flag
+    cv::Mat minZ;       // CV_32F, store datum
+    cv::Mat maxZ;       // CV_32F, store datum
 
     LodGrid() {}
 
@@ -251,6 +252,7 @@ struct LodGrid {
         : range(range)
         , exists(height(), width(), CV_8U, cv::Scalar(0))
         , watertight(height(), width(), CV_8U, cv::Scalar(0))
+        , served(height(), width(), CV_8U, cv::Scalar(0))
         , minZ(height(), width(), CV_32F, cv::Scalar(0))
         , maxZ(height(), width(), CV_32F, cv::Scalar(0))
     {}
@@ -726,7 +728,7 @@ private:
 
     void emit(const vr::ReferenceFrame::Division::Node &node
               , const geo::SrsDefinition &srsDef
-              , vts::Lod lod, const LodGrid &grid
+              , vts::Lod lod, LodGrid &grid
               , const GsdGrid *pruneGrid);
 
     const vr::ReferenceFrame &referenceFrame_;
@@ -981,7 +983,7 @@ void UnifiedPass::reduceNode(NodeJob &job)
             for (int i(0); i < parent.width(); ++i) {
                 const auto x(range.ll(0) + i);
 
-                bool exists(false), watertight(true);
+                bool exists(false), watertight(true), served(false);
                 float minZ(0.f), maxZ(0.f);
                 int childCount(0);
 
@@ -1017,6 +1019,8 @@ void UnifiedPass::reduceNode(NodeJob &job)
                         watertight = watertight
                             && child.watertight.at<std::uint8_t>
                             (row, col);
+                        served = served
+                            || child.served.at<std::uint8_t>(row, col);
                     }
                 }
 
@@ -1024,6 +1028,7 @@ void UnifiedPass::reduceNode(NodeJob &job)
                 parent.exists.at<std::uint8_t>(j, i) = 1;
                 parent.watertight.at<std::uint8_t>(j, i)
                     = config_.forceWatertight || watertight;
+                parent.served.at<std::uint8_t>(j, i) = served;
                 parent.minZ.at<float>(j, i) = minZ;
                 parent.maxZ.at<float>(j, i) = maxZ;
             }
@@ -1039,7 +1044,7 @@ void UnifiedPass::reduceNode(NodeJob &job)
 
 void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
                        , const geo::SrsDefinition &srsDef
-                       , vts::Lod lod, const LodGrid &grid
+                       , vts::Lod lod, LodGrid &grid
                        , const GsdGrid *pruneGrid)
 {
     // navtile eligibility: replicate the legacy rule — the navtile
@@ -1095,26 +1100,6 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
             const bool watertight
                 (grid.watertight.at<std::uint8_t>(j, i));
 
-            // coverage mode emits the flag index only, no store
-            if (!config_.coverage) {
-                // store page payload records the tile's true coverage
-                // (watertight independent of any index suppression)
-                const auto pageId(storeHeader_.pageId(tileId));
-                auto ipages(pages_.find(pageId));
-                if (ipages == pages_.end()) {
-                    ipages = pages_.insert
-                        ({ pageId, mnstore::Page(storeHeader_, pageId) })
-                        .first;
-                }
-                auto &nodeData(ipages->second.node(tileId));
-                nodeData.coverage
-                    = (watertight
-                       ? mnstore::NodeData::Coverage::full
-                       : mnstore::NodeData::Coverage::partial);
-                nodeData.heightRange(grid.minZ.at<float>(j, i)
-                                     , grid.maxZ.at<float>(j, i));
-            }
-
             /* skipPartial: a non-watertight tile carries no mesh in the
              * served index — its whole flag entry stays 0 (a navtile-only
              * entry would get mesh resurrected by the served-index
@@ -1123,8 +1108,33 @@ void UnifiedPass::emit(const vr::ReferenceFrame::Division::Node &node
              * satisfies by construction. Descendants keep their own entries;
              * validSubtree preserves the branch only while any survive.
              */
-            if (config_.skipPartial && !watertight) { continue; }
+            const bool suppressed(config_.skipPartial && !watertight);
 
+            // store payload for exactly the nodes the served index
+            // reaches: flagged tiles, and suppressed tiles whose
+            // subtree still carries a flag — those are served as
+            // structural metanodes whose height range bounds every
+            // descendant mesh. A suppressed node with no flag below is
+            // never advertised and stores nothing. (Coverage mode
+            // emits the flag index only, no store.)
+            const bool reachable
+                (!suppressed || grid.served.at<std::uint8_t>(j, i));
+            if (!config_.coverage && reachable) {
+                const auto pageId(storeHeader_.pageId(tileId));
+                auto ipages(pages_.find(pageId));
+                if (ipages == pages_.end()) {
+                    ipages = pages_.insert
+                        ({ pageId, mnstore::Page(storeHeader_, pageId) })
+                        .first;
+                }
+                ipages->second.node(tileId)
+                    .heightRange(grid.minZ.at<float>(j, i)
+                                 , grid.maxZ.at<float>(j, i));
+            }
+
+            if (suppressed) { continue; }
+
+            grid.served.at<std::uint8_t>(j, i) = 1;
             TiFlag::value_type flags(TiFlag::mesh);
             if (watertight) { flags |= TiFlag::watertight; }
             // navtile is a surface (DEM) concept; imagery has none, so
@@ -1178,8 +1188,7 @@ void fsyncPath(const fs::path &path)
 /** Publishes a flag tile index and metanode store pair. Stages both to
  *  temporary names, pairs the store to the staged index content
  *  (header.pairing filled here), fsyncs, and renames them sequentially. The
- *  digest makes a mixed generation detectable. Shared by the generation and
- *  re-flag paths.
+ *  digest makes a mixed generation detectable.
  */
 void publishPair(const vts::TileIndex &tileIndex
                  , const mnstore::Page::list &pages
@@ -1277,186 +1286,6 @@ void publishUnifiedIndex(const UnifiedResult &result
     LOG(info3)
         << "Tile index " << tileIndexPath
         << " published (coverage, no metanode store).";
-}
-
-namespace {
-
-/** Per-division-node context the re-flag needs: the SDS srs, the truescale
- *  measure (navtile restoration) and the prune floor grid.
- */
-struct ReflagNode {
-    vr::ReferenceFrame::Division::Node node;
-    geo::SrsDefinition srsDef;
-    std::shared_ptr<TrueScale> trueScale;
-    std::shared_ptr<GsdGrid> pruneGrid;
-};
-
-/** SDS extents (and centre) of one tile. */
-math::Extents2 tileExtents(const vr::ReferenceFrame::Division::Node &node
-                           , const vts::TileId &tileId)
-{
-    return rangeExtents(node, tileId.lod
-                        , vts::TileRange(tileId.x, tileId.y
-                                         , tileId.x, tileId.y));
-}
-
-/** @return true if all children of the tile's parent can be pruned */
-bool allChildrenCanBePruned(const ReflagNode &ctx
-                            , const vts::TileId &tileId)
-{
-    const auto depth(int(tileId.lod - ctx.node.id.lod));
-    for (const auto &sibling : vts::children(vts::parent(tileId))) {
-
-        const auto center(math::center(tileExtents(ctx.node, sibling)));
-        if (depth <= ctx.pruneGrid->floorDepth(center)) return false;
-    }
-    return true;
-}
-
-} // namespace
-
-ReflagStats reflag(const fs::path &dataset
-                   , const vr::ReferenceFrame &referenceFrame
-                   , const fs::path &tileIndexPath
-                   , const fs::path &storePath
-                   , const ReflagConfig &config
-                   , bool apply)
-{
-    const bool suppress(config.skipPartial && *config.skipPartial);
-    const bool restore(config.skipPartial && !*config.skipPartial);
-    const bool prune(bool(config.pruneGsd));
-
-    mnstore::Store store(storePath);
-    auto header(store.header());
-
-    if (header.referenceFrame != referenceFrame.id) {
-        LOGTHROW(err2, std::runtime_error)
-            << "Metanode store " << storePath << " belongs to reference "
-            << "frame <" << header.referenceFrame << ">, not <"
-            << referenceFrame.id << ">; refusing to reflag it.";
-    }
-
-    // the pair must come from one run: the store is only a trustworthy
-    // witness of the index's tiles while their pairing digest agrees
-    const auto pairing(mnstore::fileDigest(tileIndexPath));
-    if (header.pairing != pairing) {
-        LOGTHROW(err2, std::runtime_error)
-            << "Metanode store " << storePath << " is not paired with "
-            << tileIndexPath << " (store pairing " << header.pairing
-            << ", index " << pairing << "); reflag needs a matching pair.";
-    }
-
-    vts::TileIndex index;
-    index.load(tileIndexPath);
-
-    // per-division-node contexts (bisection nodes only); truescale opens
-    // the DEM, so build it only when restoring navtile bits
-    boost::optional<geo::GeoDataset> dem;
-    if (restore) { dem = geo::GeoDataset::open(dataset); }
-
-    std::vector<ReflagNode> nodes;
-    for (const auto &item : referenceFrame.division.nodes) {
-        const auto &node(item.second);
-        if (node.partitioning.mode != vr::PartitioningMode::bisection) {
-            continue;
-        }
-        ReflagNode ctx;
-        ctx.node = node;
-        ctx.srsDef = vr::system.srs(node.srs).srsDef;
-        if (restore) {
-            ctx.trueScale
-                = std::make_shared<TrueScale>(*dem, ctx.srsDef);
-        }
-        if (prune) {
-            ctx.pruneGrid = std::make_shared<GsdGrid>
-                (ctx.srsDef, node.extents, *config.pruneGsd
-                 , config.pruneExtraLods);
-            if (!ctx.pruneGrid->anyValid()) { ctx.pruneGrid.reset(); }
-        }
-        nodes.push_back(std::move(ctx));
-    }
-
-    // the bisection node whose subtree contains a tile (integer ancestry,
-    // no projection pipeline)
-    const auto findNode([&](const vts::TileId &tileId) -> ReflagNode*
-    {
-        for (auto &ctx : nodes) {
-            const auto &nid(ctx.node.id);
-            if (tileId.lod < nid.lod) { continue; }
-            const auto d(tileId.lod - nid.lod);
-            if (((tileId.x >> d) == nid.x) && ((tileId.y >> d) == nid.y)) {
-                return &ctx;
-            }
-        }
-        return nullptr;
-    });
-
-    ReflagStats stats;
-    mnstore::Page::list pages;
-    for (const auto &root : store.pageIds()) {
-        mnstore::Page page;
-        if (!store.read(root, page)) { continue; }
-
-        for (unsigned int level(0); level < header.metaDepth; ++level) {
-            const auto size(header.levelSize(level));
-            const vts::Lod lod(root.lod + level);
-            for (unsigned int y(0); y < size; ++y) {
-                for (unsigned int x(0); x < size; ++x) {
-                    auto &data(page.node(level, x, y));
-                    if (!data) { continue; }
-                    ++stats.total;
-
-                    const vts::TileId tileId
-                        (lod, (root.x << level) + x, (root.y << level) + y);
-                    auto *ctx(findNode(tileId));
-                    if (!ctx) { continue; }
-
-                    const auto extents(tileExtents(ctx->node, tileId));
-                    const auto center(math::center(extents));
-                    const auto depth(int(tileId.lod - ctx->node.id.lod));
-
-                    if (ctx->pruneGrid && (depth > 0)
-                        && allChildrenCanBePruned(*ctx, tileId))
-                    {
-                        // drop from both store and index
-                        data = mnstore::NodeData();
-                        index.set(tileId, TiFlag::value_type(0));
-                        ++stats.pruned;
-                        continue;
-                    }
-
-                    const bool partial
-                        (data.coverage
-                         == mnstore::NodeData::Coverage::partial);
-                    if (!partial) { continue; }
-
-                    if (suppress) {
-                        index.set(tileId, TiFlag::value_type(0));
-                        ++stats.suppressed;
-                        continue;
-                    }
-                    if (restore) {
-                        const auto ts(math::size(extents));
-                        const math::Size2f samplePx
-                            (ts.width / config.tileSampling
-                             , ts.height / config.tileSampling);
-                        TiFlag::value_type flags(TiFlag::mesh);
-                        if ((*ctx->trueScale)(center, samplePx) < 1.0) {
-                            flags |= TiFlag::navtile;
-                        }
-                        index.set(tileId, flags);
-                        ++stats.restored;
-                    }
-                }
-            }
-        }
-        pages.push_back(std::move(page));
-    }
-
-    if (apply) {
-        publishPair(index, pages, header, tileIndexPath, storePath);
-    }
-    return stats;
 }
 
 } // namespace tiling

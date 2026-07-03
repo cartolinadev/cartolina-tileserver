@@ -8,27 +8,55 @@ RFC remain in the
 The metanode-store and unified-tiling work in this backlog is specified by
 [RFC 7](https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/rfc-metanode-store.md).
 
-New entries are added directly below this introduction, newest first.
+**New entries go directly below this line, newest first — never below an
+existing entry, even one added earlier in the same session.**
 
-## REDESIGN (tileserver): make the metanode store a pure height sidecar — delete `--reflag` and the duplicated coverage
+## REDESIGN (tileserver): package the flag index and height sidecar as one file
 
 **Opened:** 2026-07-03
-**Status:** open; execute at the next structurally forced store-format
-break (the shallow-subtree / v7 packaging milestone). Do not bump the
-format for this alone — but do not ship the v7 break without it.
+**Status:** deferred — an operator simplification, not a correctness or
+runtime need. Revisit only when managing paired publication causes real
+problems or another format change makes the migration cheap.
 
-RFC 7's design was elegant: the flag tile index is the sole authority
-for tile existence and delivered flags — per-lod qtrees, with metanode
-existence and child flags inferred from them at delivery — and the
-store carries the one thing the index cannot: height ranges. The
-implementation muddied it. The store node grew a three-state coverage
-classification (`none`/`partial`/`full`) that duplicates the index's
-truth, and RFC 7 deviation 11 then promoted the duplication to a
-principle ("raw measurement vs policy-applied delivery view") to
-justify `--reflag`. That is a justification written after the fact for
-a byte nothing needed.
+A DEM currently publishes two paired artifacts: the compact flag tile
+index and its height sidecar. This contract is coherent and can remain
+indefinitely, but one container could make it simpler for operators:
 
-The circularity, spelled out:
+- one atomically replaced `tiling.<rf>` file;
+- the existing compact flag qtrees as one section;
+- optional height pages as another section (absent for coverage-only
+  imagery indexes); and
+- no cross-file pairing, mixed-generation state, or two-file rollback.
+
+The two sections must keep their current independent encodings. Flags
+collapse extremely well and need cheap random lookup; height ranges do
+not. Combining flags and heights into one quadtree node value would
+destroy that useful separation. Resource-specific `delivery.index` and
+`tileset.index` files remain derived caches.
+
+This is not the required destination of the height-sidecar cleanup. It
+does not improve serving correctness or performance, and the current
+pairing already detects interrupted publication. Prefer the existing
+two-file design until operational evidence justifies a container and
+its migration path.
+
+## REDESIGN: make the metanode store a pure height sidecar
+
+**Opened:** 2026-07-03
+**Status:** stage 1 (semantic scrub, format-neutral) implemented
+2026-07-03; stage 2 (drop the reserved byte) is deferred until an
+actual store-format change. Do not bump the format for this alone.
+
+RFC 7 deliberately stored mesh and watertight state alongside heights
+while retaining the existing flag tile index. Review identified the
+resulting two-authority risk and introduced pairing. The implementation
+then continued to source all delivered flags and child existence from
+the paired index, leaving the store byte unused by serving from the day
+it landed. `--reflag` later repurposed the distinction as raw coverage
+versus delivery policy, but that marginal feature did not justify the
+ongoing duplicate semantics.
+
+The redundancy, spelled out:
 
 - The serve path never reads partial/full. It derives existence and
   child flags from the index (`validSubtree`) and uses the store
@@ -36,11 +64,9 @@ The circularity, spelled out:
   serve (`generator/metatile-store.cpp`). For everything delivery
   does, the byte is dead weight.
 - The only functional reader of the distinction is `--reflag`
-  (`tiling/unified.cpp`) — a feature whose sole purpose is to re-derive
-  index flags from the byte whose sole purpose is to enable
-  `--reflag`. The policy flips it buys (skipPartial either way,
-  retro-prune) are one re-tile away on the unified pass: ~1 h for a
-  planet, minutes for a regional dataset.
+  (`tiling/unified.cpp`). The policy flips it buys (skipPartial either
+  way, retro-prune) are one re-tile away on the unified pass: ~1 h for
+  a planet, minutes for a regional dataset.
 - The other reader, `mapproxy-mnstore check`, has never been run in
   production. Not once.
 
@@ -49,50 +75,56 @@ index owns flags, store owns heights — needs a page of explanation,
 and every reader of `mnstore.hpp` gets to wonder which of the two
 truths wins.
 
-Target, as store format v3:
+The fix decomposes into a semantic scrub (a code change,
+format-neutral) and a layout cleanup (a real format change); only the
+second waits for a forced break.
 
-- Node payload is `{minZ, maxZ}` — 4 bytes, nothing else.
-  `NodeData::Coverage` is deleted; presence lives where it already
-  structurally lives, in the page codec's empty/uniform/internal tags.
+Stage 1 — semantic scrub, no format change (implemented 2026-07-03):
+
+- `NodeData::Coverage` is deleted from the code. The byte stays in
+  the v2 layout as a reserved field (see the `ReservedByte` comment in
+  `support/mnstore.cpp` for why it must stay nonzero). Post-scrub
+  readers take presence from the page codec's empty/uniform/internal
+  tags, where it structurally lives.
 - The store's node set is exactly the served set: payload is emitted
   iff the node is index-reachable (own flags, or a descendant's — the
-  structural-node case under `skipPartial`). One "served" bit
+  structural-node case under `skipPartial`). One reachability bit
   propagated up the mip ascent; a suppressed leaf with nothing below
   it is not written. The stored semantics become one sentence: *for
   every node the index serves, the source height range over its
-  cell.*
+  cell.* Old and new servers can serve both pre-scrub and post-scrub
+  v2 stores; old stores' extra nodes are inert because traversal is
+  index-gated. Post-scrub stores do not preserve the deleted old-tool
+  `--reflag` semantics. No re-tiles are required for serving.
 - `--reflag` is deleted: code, CLI, and its operator-guide section.
-  Changing `skipPartial` or prune means re-tiling, documented with the
-  measured cost.
-- `mapproxy-mnstore check`, if it survives at all, verifies the pair
-  instead: pairing digest, store-payload ↔ index-reachability set
-  equality in both directions, and the aggregation invariant (parent
-  range contains children's). Stronger than the coverage check, and it
+  Changing `skipPartial` or prune means re-tiling (~1 h for a planet).
+- `mapproxy-mnstore check` verifies the pair instead: store-payload ↔
+  index-reachability set agreement and the aggregation invariant
+  (parent range contains children's). It validates the post-scrub
+  node-set contract; a pre-scrub `--skipPartial` store can report its
+  now-inert surplus payload. Stronger than the coverage check, and it
   needs no byte.
-- The reader accepts v2 alongside v3: the height semantics and datum
-  are identical, the decoder just skips the coverage byte, and
-  leftover unreachable v2 payload is inert because traversal is
-  index-gated. The writer emits v3 only. Production v2 tilesets keep
-  serving untouched; drop the v2 decode branch once they roll over.
-- The sidecar invariant gets stated where people read:
+- The sidecar invariant is stated where people read:
   `support/mnstore.hpp`, [tile-index.md](tile-index.md), the
-  [operator guide](metanode-store-operations.md), and an RFC 7
-  addendum superseding deviation 11.
+  [operator guide](metanode-store-operations.md), and the RFC 7
+  implementation notes (amended in place; deviation 11's framing is
+  superseded).
 
-Why deferred rather than now: the format is a contract with production
-data, and v3's payoff is design integrity, not correctness or
-performance. Format versions change when a structural milestone forces
-them; hygiene rides along, never drives. The v7 packaging milestone
-already carries a format break and a re-tile — this cleanup boards
-that train or none.
+Stage 2 — layout cleanup, deferred until an actual store-format change:
+
+- Node payload shrinks to `{minZ, maxZ}` — 4 bytes; the reserved byte
+  is dropped and the pre-scrub compatibility concern expires with the
+  version bump. The shallow-subtree v7 wire-format work does not itself
+  force a store-format change. The format is a contract with production
+  data: hygiene does not drive a version bump.
 
 ## P1 CORRECTNESS: prune must not split child sets
 
 **Opened:** 2026-07-02
-**Status:** implemented 2026-07-02 (complete child-set pruning in
-generation and `--reflag`; `mapproxy-mnstore check` validation).
+**Status:** implemented 2026-07-02 (complete child-set pruning during
+generation; `mapproxy-mnstore check` validation).
 
-Pruning and `--reflag` now keep or remove all siblings together;
+Pruning keeps or removes all siblings together;
 `mapproxy-mnstore check` finds stores produced by the old per-tile rule.
 
 ## P1 CORRECTNESS: `skipPartial` must remove geometry-less leaves
@@ -322,7 +354,7 @@ depth formula per tile centre) rather than the `truescale` bit sketched
 below. `k` is implemented as `--pruneExtraLods` (0 = terrain-native),
 set from an operator `--bottomLod` overshoot; a per-resource
 resolution-margin knob for draped imagery remains the open refinement.
-The prune is also available on an existing pair via `--reflag --gsd`.
+Changing the prune policy means re-running `mapproxy-tiling --apply`.
 The leaf-triangle-budget caveat below still applies.
 
 Pseudomercator's sec(lat) inflation means same-lod tiles cover ~11x

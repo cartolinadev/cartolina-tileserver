@@ -18,7 +18,7 @@ Dataset preparation and resource setup:
 | Tool | Purpose |
 |---|---|
 | `generatevrtwo` | builds a virtual GDAL dataset with overview pyramids (vrtwo) from an input raster; one resampling per run |
-| `mapproxy-tiling` | surveys a dataset and, with `--apply`, builds its flag index and metanode store (DEM) or coverage index (imagery); also supports GSD pruning, partial-tile suppression, and offline reflagging. See the [metanode-store operator guide](metanode-store-operations.md) and `--help` |
+| `mapproxy-tiling` | surveys a dataset and, with `--apply`, builds its flag index and metanode store (DEM) or coverage index (imagery); also supports GSD pruning and partial-tile suppression. See the [metanode-store operator guide](metanode-store-operations.md) and `--help` |
 | `mapproxy-setup-resource` | end-to-end resource setup from a raw raster: builds the overview pyramid and tiling artifacts, writes the resource definition, and registers it with mapproxy. See the [metanode-store operator guide](metanode-store-operations.md) and `--help` |
 | `mapproxy-rf-mask` | builds reference-frame mask trees (resource `mask` setting) |
 

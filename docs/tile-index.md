@@ -252,7 +252,7 @@ suppressed tiles is therefore a serve-time derivation; the published
 index needs none materialized. A suppressed tile on a branch that does
 lead to deeper geometry is served as a *structural* metanode: zero own
 flags, child bits pointing toward the geometry, and (store path) its
-stored coverage envelope as `geomExtents` so client-side culling can
+stored height range as `geomExtents` so client-side culling can
 decide the descent.
 
 **The invariant is discipline, not format.** `validSubtree` tests "any

@@ -506,8 +506,8 @@ metatileFromStore(const vts::TileId &tileId
 
                 // A real tile must have stored payload. A zero-flag
                 // node with payload is a structural node (a partial
-                // tile suppressed by skipPartial): its stored coverage
-                // envelope bounds every descendant mesh, so it is
+                // tile suppressed by skipPartial): its stored height
+                // range bounds every descendant mesh, so it is
                 // served too — client-side culling needs it to decide
                 // the descent toward that geometry. A node with
                 // neither is empty space: flags and children only.

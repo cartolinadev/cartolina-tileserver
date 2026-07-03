@@ -39,6 +39,7 @@
 
 #include "vts-libs/vts/io.hpp"
 #include "vts-libs/vts/tileop.hpp"
+#include "vts-libs/vts/tileindex.hpp"
 #include "mapproxy/support/mnstore.hpp"
 
 namespace po = boost::program_options;
@@ -66,7 +67,9 @@ private:
     int info();
     int dump();
 
-    /** Finds full-coverage nodes with only some children retained.
+    /** Verifies the store against its paired flag tile index: pairing
+     *  digest, payload ↔ index-reachability agreement, range
+     *  aggregation, and the prune sibling rule.
      * @return EXIT_SUCCESS when no violation is found
      */
     int check();
@@ -75,6 +78,7 @@ private:
 
     std::string command_;
     fs::path store_;
+    fs::path tileIndex_;
     boost::optional<vts::TileId> pageId_;
 };
 
@@ -87,12 +91,16 @@ void MnStoreTool::configuration(po::options_description &cmdline
          , "Command: info, dump, check, selftest.")
         ("store", po::value(&store_)
          , "Path to metanode store file.")
+        ("tileIndex", po::value(&tileIndex_)
+         , "Path to the paired flag tile index (check; defaults to "
+         "tiling.<rf> beside a metanodes.<rf> store).")
         ("page", po::value<vts::TileId>()
          , "Limit dump to a single page (page root tile id).")
         ;
 
     pd.add("command", 1)
-        .add("store", 1);
+        .add("store", 1)
+        .add("tileIndex", 1);
 
     (void) config;
 }
@@ -111,11 +119,14 @@ bool MnStoreTool::help(std::ostream &out, const std::string &what) const
                 "\n"
                 "    mapproxy-mnstore info <store>\n"
                 "    mapproxy-mnstore dump <store> [--page lod-x-y]\n"
-                "    mapproxy-mnstore check <store>\n"
+                "    mapproxy-mnstore check <store> [<tileIndex>]\n"
                 "    mapproxy-mnstore selftest\n"
                 "\n"
-                "check finds parents with only some children retained.\n"
-                "It does not support forceWatertight stores.\n"
+                "check verifies the store against its paired flag tile\n"
+                "index: pairing digest, payload present exactly for the\n"
+                "tiles the index reaches, parent ranges containing child\n"
+                "ranges, and pruned sibling sets removed together. It does\n"
+                "not support forceWatertight stores.\n"
                 "\n");
         return true;
     }
@@ -125,17 +136,6 @@ bool MnStoreTool::help(std::ostream &out, const std::string &what) const
 
 void dumpPage(const mnstore::Header &header, const mnstore::Page &page)
 {
-    const auto coverageName([](mnstore::NodeData::Coverage coverage)
-                            -> const char*
-    {
-        switch (coverage) {
-        case mnstore::NodeData::Coverage::none: return "none";
-        case mnstore::NodeData::Coverage::partial: return "partial";
-        case mnstore::NodeData::Coverage::full: return "full";
-        }
-        return "invalid";
-    });
-
     std::cout << "page " << page.root() << '\n';
     for (unsigned int level(0); level < header.metaDepth; ++level) {
         const auto size(header.levelSize(level));
@@ -148,7 +148,6 @@ void dumpPage(const mnstore::Header &header, const mnstore::Page &page)
                     << "    " << vts::TileId
                     (lod, (page.root().x << level) + x
                      , (page.root().y << level) + y)
-                    << " coverage=" << coverageName(node.coverage)
                     << " minZ=" << node.min()
                     << " maxZ=" << node.max()
                     << '\n';
@@ -201,32 +200,74 @@ int MnStoreTool::dump()
 
 int MnStoreTool::check()
 {
+    // default the paired index to tiling.<rf> beside a metanodes.<rf>
+    // store
+    if (tileIndex_.empty()) {
+
+        const auto name(store_.filename().string());
+        const std::string prefix("metanodes.");
+        if (name.compare(0, prefix.size(), prefix) != 0) {
+
+            std::cerr << "cannot derive the paired tile index path from "
+                      << store_ << "; pass it explicitly\n";
+            return EXIT_FAILURE;
+        }
+        tileIndex_ = store_.parent_path()
+            / ("tiling." + name.substr(prefix.size()));
+    }
+
     mnstore::Store store(store_);
     const auto &header(store.header());
-    const unsigned int deepest(header.metaDepth - 1);
-    const auto rootSize(header.rootSize());
 
-    // level-0 node presence per page: the row of children that hangs
-    // under another page's deepest level
-    std::map<vts::TileId, std::vector<std::uint8_t>> present;
-    for (const auto &root : store.pageIds()) {
+    if (mnstore::fileDigest(tileIndex_) != header.pairing) {
 
-        mnstore::Page page;
-        if (!store.read(root, page)) continue;
-
-        auto &cells(present[root]);
-        cells.assign(rootSize * rootSize, 0);
-        for (unsigned int y(0); y < rootSize; ++y) {
-
-            for (unsigned int x(0); x < rootSize; ++x) {
-                if (page.node(0u, x, y)) cells[y * rootSize + x] = 1;
-            }
-        }
+        std::cout << "pairing mismatch: store " << store_
+                  << " is not paired with " << tileIndex_ << "\n";
+        return EXIT_FAILURE;
     }
+
+    vts::TileIndex index;
+    index.load(tileIndex_);
+    const auto lodRange(index.lodRange());
+
+    // decoded-page cache; wholesale eviction is crude but the access
+    // pattern is page-local
+    std::map<vts::TileId, boost::optional<mnstore::Page>> cache;
+    const std::size_t cacheLimit(4096);
+    const auto payload([&](const vts::TileId &tileId)
+                       -> const mnstore::NodeData*
+    {
+        const auto root(header.pageId(tileId));
+        auto icache(cache.find(root));
+        if (icache == cache.end()) {
+
+            if (cache.size() >= cacheLimit) cache.clear();
+            mnstore::Page page;
+            const bool found(store.read(root, page));
+            icache = cache.insert
+                ({ root, found
+                   ? boost::optional<mnstore::Page>(std::move(page))
+                   : boost::none }).first;
+        }
+        if (!icache->second) return nullptr;
+        const auto &node(icache->second->node(tileId));
+        return node ? &node : nullptr;
+    });
 
     const std::size_t reportLimit(20);
     std::size_t checked(0), violations(0);
+    const auto report([&](const vts::TileId &tileId, const char *what)
+    {
+        ++violations;
+        if (violations <= reportLimit)
+            std::cout << tileId << ": " << what << "\n";
+    });
 
+    /* Store side: every payload node must be index-reachable (it has
+     * flags, or a flagged descendant makes it a served structural
+     * node), its parent must carry payload too (the reachable set is
+     * parent-closed), and the parent range must contain its range.
+     */
     for (const auto &root : store.pageIds()) {
 
         mnstore::Page page;
@@ -241,50 +282,76 @@ int MnStoreTool::check()
                 for (unsigned int x(0); x < size; ++x) {
 
                     const auto &node(page.node(level, x, y));
-                    if (node.coverage
-                        != mnstore::NodeData::Coverage::full)
-                        continue;
+                    if (!node) continue;
                     ++checked;
 
                     const vts::TileId tileId
                         (lod, (root.x << level) + x
                          , (root.y << level) + y);
 
-                    unsigned int count(0);
-                    if (level < deepest) {
+                    if (!index.validSubtree(tileId)) {
 
-                        for (int c(0); c < 4; ++c) {
-
-                            const auto cx(2 * x + (c & 1));
-                            const auto cy(2 * y + (c >> 1));
-                            if (page.node(level + 1, cx, cy)) ++count;
-                        }
+                        report(tileId, "payload the index never reaches");
+                        continue;
                     }
+                    if (tileId.lod <= lodRange.min) continue;
 
-                    if (level == deepest) {
+                    const auto *parent(payload(vts::parent(tileId)));
+                    if (!parent) {
 
-                        for (const auto &childId : vts::children(tileId)) {
-
-                            const auto childRoot(header.pageId(childId));
-                            const auto ipresent(present.find(childRoot));
-                            if (ipresent == present.end()) continue;
-                            const auto cell
-                                ((childId.y - childRoot.y) * rootSize
-                                 + (childId.x - childRoot.x));
-                            if (ipresent->second[cell]) ++count;
-                        }
+                        report(tileId, "payload without parent payload");
+                        continue;
                     }
-
-                    if (!count || (count == 4)) continue;
-
-                    ++violations;
-                    if (violations <= reportLimit)
-                        std::cout
-                            << "full-coverage node " << tileId
-                            << " keeps " << count << " of 4 children\n";
+                    if ((parent->min() > node.min())
+                        || (parent->max() < node.max()))
+                        report(tileId
+                               , "parent range does not contain child");
                 }
             }
         }
+    }
+
+    /* Index side: every flagged tile must carry payload, and a
+     * watertight tile keeps all four children or none (the prune
+     * sibling rule; unsupported for forceWatertight stores).
+     */
+    typedef vts::TileIndex::Flag TiFlag;
+    for (auto lod(lodRange.min); lod <= lodRange.max; ++lod) {
+
+        const auto *tree(index.ctree(lod));
+        if (!tree) continue;
+
+        tree->forEachNode([&](unsigned int x, unsigned int y
+                              , unsigned int size
+                              , vts::QTree::value_type value)
+        {
+            if (!value) return;
+            for (unsigned int row(y); row < y + size; ++row) {
+
+                for (unsigned int col(x); col < x + size; ++col) {
+
+                    const vts::TileId tileId(lod, col, row);
+                    ++checked;
+
+                    if (!payload(tileId)) {
+
+                        report(tileId, "flagged tile without payload");
+                        continue;
+                    }
+
+                    if (!(value & TiFlag::watertight)
+                        || (lod >= lodRange.max))
+                        continue;
+                    unsigned int count(0);
+                    for (const auto &childId : vts::children(tileId)) {
+                        if (payload(childId)) ++count;
+                    }
+                    if (count && (count != 4))
+                        report(tileId, "watertight tile keeps a partial "
+                               "child set");
+                }
+            }
+        });
     }
 
     if (violations > reportLimit)
@@ -292,8 +359,8 @@ int MnStoreTool::check()
                   << " more violations not shown)\n";
 
     std::cout
-        << "checked " << checked << " full-coverage nodes, "
-        << violations << " violation"
+        << "checked " << checked << " nodes against " << tileIndex_
+        << ", " << violations << " violation"
         << ((violations == 1) ? "" : "s") << "\n";
     return violations ? EXIT_FAILURE : EXIT_SUCCESS;
 }
@@ -324,10 +391,6 @@ public:
 
         if ((hash & 3) == 3) { return node; } // absent
 
-        node.coverage
-            = ((hash & 4)
-               ? mnstore::NodeData::Coverage::full
-               : mnstore::NodeData::Coverage::partial);
         node.heightRange(-500.0 + (hash % 9000)
                          , -500.0 + (hash % 9000) + (hash % 333));
         return node;

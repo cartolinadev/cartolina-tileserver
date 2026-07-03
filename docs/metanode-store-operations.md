@@ -11,8 +11,8 @@ A DEM dataset directory contains these artifacts:
 | Artifact | Purpose |
 |---|---|
 | `dem` | Normal vrtwo pyramid used for meshes and navtiles |
-| `tiling.<referenceFrame>` | Policy-applied delivery view: mesh, watertight, navtile and reachable subtrees |
-| `metanodes.<referenceFrame>` | Raw per-tile metadata: source coverage (`partial` or `full`) and min/max height |
+| `tiling.<referenceFrame>` | Flag tile index: the sole authority for tile existence and delivered flags (mesh, watertight, navtile, reachable subtrees) |
+| `metanodes.<referenceFrame>` | Height sidecar: min/max height for every node the flag index serves |
 | `dem.min`, `dem.max` | Legacy metatile-warp inputs |
 
 `tiling.<rf>` and `metanodes.<rf>` form a pair. One `mapproxy-tiling` run
@@ -43,9 +43,15 @@ Inspect a store with:
 ```sh
 mapproxy-mnstore info <dataset>/metanodes.<rf>
 mapproxy-mnstore dump <dataset>/metanodes.<rf> --page <lod>-<x>-<y>
-mapproxy-mnstore check <dataset>/metanodes.<rf>
+mapproxy-mnstore check <dataset>/metanodes.<rf> [<tileIndex>]
 mapproxy-mnstore selftest
 ```
+
+`check` verifies the pair (the tile index defaults to the sibling
+`tiling.<rf>`): the pairing digest, that store payload exists exactly
+for the tiles the index reaches, that parent height ranges contain
+their children's, and that pruned sibling sets were removed together.
+The check does not support `--forceWatertight` stores.
 
 ## Create a DEM resource
 
@@ -135,13 +141,15 @@ the resource remains unavailable until its definition and artifacts match.
 navtile; `watertight` was already false. The source data is unchanged.
 
 Surviving descendants keep their own entries, so a suppressed tile can be a
-geometry-less step toward deeper geometry. No tiling-side closure pass is
-needed: metatile child flags are derived from the delivery index at serve
-time, and a suppressed subtree with no geometry below is never advertised
-to the client (see [tile-index.md](tile-index.md)). A suppressed tile on a
-branch that does lead to geometry is served as a structural metanode
-carrying its stored coverage envelope, which bounds every descendant mesh,
-so client-side culling descends the branch correctly.
+geometry-less step toward deeper geometry. Metatile child flags are derived
+from the delivery index at serve time, and a suppressed subtree with no
+geometry below is never advertised to the client (see
+[tile-index.md](tile-index.md)). A suppressed tile on a branch that does
+lead to geometry is served as a structural metanode carrying its stored
+height range, which bounds every descendant mesh, so client-side culling
+descends the branch correctly; the tiling pass stores payload for exactly
+those reachable tiles and drops suppressed subtrees with nothing below
+from both artifacts.
 
 Without suppression, a global base surface already fills the uncovered part
 of a partial tile, but the partial mesh can leave cracks at its boundary and
@@ -149,12 +157,8 @@ forces renderer framebuffer switches. Suppression sacrifices the tile's valid
 partial content to remove both costs; this tradeoff is often reasonable when a
 global base can replace the whole tile.
 
-The metanode store retains the tile's raw `partial` coverage classification
-and its minimum/maximum height. This metadata is not advertised while the
-delivery-index entry is zero; it lets
-`--reflag --skipPartial false` restore the mesh flag without repeating the
-source warps (the navtile flag is recomputed from the dataset). See
-[Re-flagging](#re-flagging-an-existing-pair-reflag).
+Changing the policy either way means re-running `mapproxy-tiling --apply`
+(about an hour for a planet, minutes for a regional dataset).
 DEM path only; mutually exclusive with `--forceWatertight`.
 
 #### Spatial prune (`--prune`, default on)
@@ -166,10 +170,12 @@ resolution; the prune stops that per location. At a node centre the cutoff
 equals the depth `mapproxy-calipers` measured, so low-distortion (e.g.
 equatorial) coverage is unchanged and only over-generated tiles are removed.
 Coarser LODs are untouched. `--prune false` tiles the full lod range
-everywhere. The prune threshold is tied to `--gsd`. DEM path only.
+everywhere. The prune threshold is tied to `--gsd`. Pruned tiles are
+removed from both artifacts; changing the prune (either way) means
+re-tiling. DEM path only.
 
-Verify a pair with `mapproxy-mnstore check <dataset>/metanodes.<rf>`.
-The check does not support stores created with `--forceWatertight`.
+Verify a published pair with `mapproxy-mnstore check
+<dataset>/metanodes.<rf>`.
 
 The dry survey reports the measurement-derived maximum LOD. The apply pass
 can prune every tile at that deepest level, because only the full spatial pass
@@ -177,39 +183,9 @@ knows the per-tile cutoffs. In that case the completed run reports the lower
 final maximum and writes that actual range into the resource template. This is
 an expected refinement of the dry estimate.
 
-#### Re-flagging an existing pair (`--reflag`)
-
-`--reflag` changes the partial-tile or prune policy of an existing pair
-in place, without re-running the warps:
-
-```sh
-# suppress partial meshes on an already-tiled resource (dry report first)
-mapproxy-tiling <dataset> <rf> --reflag --skipPartial true
-mapproxy-tiling <dataset> <rf> --reflag --skipPartial true --apply
-
-# restore them
-mapproxy-tiling <dataset> <rf> --reflag --skipPartial false --apply
-
-# retro-prune to a target floor GSD
-mapproxy-tiling <dataset> <rf> --reflag --gsd 10 --apply
-```
-
-Re-flagging reads the store as the witness of each tile's true coverage,
-rewrites the flag index (and, for prune, drops store nodes too), and
-re-pairs and republishes both artifacts. Without `--apply` it reports
-the counts it would change. It never touches heights or watertight
-flags.
-Restoring suppressed partial tiles recomputes their navtile bit from the
-dataset, so `--skipPartial true` then `--skipPartial false` reproduces the
-original index exactly.
-
-Retro-prune only removes tiles; it cannot add resolution back (the store nodes
-are gone). To make a pruned resource deeper again, re-tile with `--apply`.
-`--reflag --prune false` exits with that instruction rather than pretending to
-restore absent nodes.
-
-A running mapproxy notices the new pairing on its next resource prepare and
-adopts the republished pair (see [Force resource preparation](#3-force-resource-preparation)).
+A running mapproxy notices the new pairing of a re-tiled dataset on its
+next resource prepare and adopts the republished pair (see
+[Force resource preparation](#3-force-resource-preparation)).
 
 #### Vertical datum inputs
 

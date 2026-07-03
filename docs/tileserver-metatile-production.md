@@ -139,14 +139,15 @@ passes the source resolution at their own location — the per-tile
 version of the calipers depth measure, evaluated from the node's
 projection area scale, so a projection's area inflation no longer
 forces over-generation past the source. Pruning keeps or removes all
-siblings together. `mapproxy-mnstore check` finds stores produced by the
-old per-tile rule.
+siblings together.
 `--skipPartial` clears the mesh
 flag on non-watertight tiles, sacrificing their valid partial content to
 eliminate boundary cracks and renderer framebuffer switches. Pruning removes
-the tile from both artifacts; `skipPartial` changes only the delivery index and
-retains raw coverage in the store, which lets `--reflag` reverse that policy
-without re-warping (see the operator guide).
+the tile from both artifacts; `skipPartial` zeroes the flag-index entry
+and keeps store payload only while the branch still leads to geometry
+(the structural-node envelope below). Changing either policy means
+re-tiling. `mapproxy-mnstore check` verifies a published pair (see the
+operator guide).
 
 **Cost.** Far below the legacy per-tile-per-LOD warp. On the 1.94 Gpx
 test sample the pass runs in ~1 min vs ~14 min for legacy analysis;
@@ -155,13 +156,17 @@ planetary tiling ran for days. The intermediate data volume drops by
 `samplesPerTile²` (the old pass sampled a 129×129 grid per tile);
 source I/O and warp-kernel work remain `O(source pixels)` per pass.
 
-**The metanode store it emits.** Paged and mmapped, with a directory
-mapping each metatile root block `(lod, x, y)` to a page. Each page
-encodes per-level local quadtrees with uniform-quadrant collapse and a
-5-byte node payload: one coverage byte plus a `half` `minZ`/`maxZ`, biased
-outward (conservative for culling). Coverage records the raw analysis result:
-`partial` or `full`; an absent node is `none`. The store has no delivery flags
-such as navtile. Heights are stored in the
+**The metanode store it emits.** A height sidecar of the flag index:
+it carries, for every node the index serves, the source height range
+over that node's cell — and nothing else. Paged and mmapped, with a
+directory mapping each metatile root block `(lod, x, y)` to a page.
+Each page encodes per-level local quadtrees with uniform-quadrant
+collapse and a 5-byte node payload: one reserved byte (constant;
+dropped at the next format version) plus a `half` `minZ`/`maxZ`, biased
+outward (conservative for culling). Node presence is defined by the
+page encoding's quadrant tags; the store has no flags of its own — the
+paired index is the sole authority for existence and delivered flags.
+Heights are stored in the
 **orthometric** (geoid-shifted SDS) vertical datum (format v2), which
 is what lets flat water and filled ocean collapse to `(0, 0)` and keeps
 the store mmappable — a planetary melown2015 store is ~750 MB even with
@@ -192,7 +197,7 @@ server:
    those with the derived-at-delivery fields into the v6 metatile. A node whose
    index entry is zero but whose store payload exists (a `skipPartial`
    suppressed tile) is a structural node: it is serialised with its stored
-   coverage envelope, which bounds every descendant mesh, so client-side
+   height range, which bounds every descendant mesh, so client-side
    culling can decide the descent toward the deeper geometry. **No warp.**
 3. Returns the v6 binary as the HTTP response.
 

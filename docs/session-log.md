@@ -5,29 +5,59 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+**New entries go directly below this line, newest first — never below an
+existing entry, even one added earlier in the same session.**
+
+## 2026-07-03 — height-sidecar semantic scrub
+
+The semantic scrub landed, format-neutral (still v2):
+
+- `NodeData::Coverage` deleted; the payload byte is now a reserved
+  constant (see the `ReservedByte` comment in `support/mnstore.cpp`
+  for why it must stay nonzero). Presence comes from the page codec's
+  quadrant tags.
+- The unified pass emits store payload for exactly the index-reachable
+  set: one `served` bit propagated up the mip ascent; a `skipPartial`
+  suppressed tile with no geometry below is written to neither
+  artifact (`tiling/unified.cpp`).
+- `--reflag` deleted (code, CLI, docs). Changing `skipPartial` or prune
+  means re-tiling.
+- `mapproxy-mnstore check` rewritten as a pair verifier: pairing
+  digest, payload ↔ index-reachability agreement both ways,
+  parent-range containment, and the prune sibling rule. The check does
+  not support `forceWatertight` stores.
+
+Verified on the RFC 7 sample dataset: a re-tiled pair reproduces the
+pre-scrub artifacts exactly (height payload and pairing digest both
+identical — tiling output is deterministic); the tested pre-scrub
+ordinary stores pass the new check unchanged; a new `--skipPartial`
+pair passes with the narrowed node set; the dev daemon serves every
+store-backed resource from its store with no warp fallbacks.
+`mapproxy-mnstore selftest` passes.
+
+RFC 7 implementation notes amended in cartolina-js (deviation 11
+superseded; 2026-07-03 addendum); operator guide, tile-index.md,
+tileserver-tools.md, and tileserver-metatile-production.md scrubbed of
+reflag and coverage-byte semantics.
+
 ## 2026-07-03 — metanode-store architecture review: coverage byte is design debt
 
 Reviewed the RFC 7 store/index split against the implementation, prompted
 by the head-scratcher that the store duplicates coverage information the
-flag index already owns. Findings: the serve path never reads the store's
-partial/full distinction — metanode existence and child flags are derived
-from the index (`validSubtree`), and the store is consumed strictly as a
-height lookup for nodes the index decided to serve. The only functional
-reader of the coverage byte is `--reflag`, whose justification is circular
-(the byte exists to enable reflag; reflag exists to re-derive flags from
-the byte), and `mapproxy-mnstore check` has never been run in production.
-Deviation 11's "raw measurement vs delivery view" framing is a post-hoc
-rationalization, not the design.
+flag index already owns. RFC 7 deliberately stored mesh and watertight
+beside heights while retaining the flag index; review recognized the
+two-authority risk and added pairing. The implementation nevertheless
+sourced delivered flags and child existence from the paired index from
+the day it landed, so serving never used the store's partial/full
+distinction. `--reflag` later became its only functional reader, a
+marginal feature that did not justify keeping the duplicate semantics;
+`mapproxy-mnstore check` had never been run in production.
 
-Recorded as a biting backlog entry ("make the metanode store a pure height
-sidecar"): target is a 4-byte `{minZ, maxZ}` payload with the node set
-equal to the served set and `--reflag` deleted, deferred to ride the next
-structurally forced store-format break (the shallow-subtree / v7
-milestone) rather than churning the format for hygiene. A format-neutral
-staging idea — scrub the semantics now and declare the byte reserved
-(written as constant nonzero, since deployed readers use its truthiness as
-the presence test) — is under discussion and not yet recorded in the
-entry.
+Recorded as a backlog entry ("make the metanode store a pure height
+sidecar") in two stages: a format-neutral semantic scrub now, and the
+4-byte payload deferred until an actual store-format change rather than
+churning the format for hygiene. The shallow-subtree v7 wire format does
+not itself force a store-format change.
 
 For the record: store format v2 (orthometric heights, `bdbc870`) replaced
 v1 the same day it landed, pre-production, after review caught raw-SDS

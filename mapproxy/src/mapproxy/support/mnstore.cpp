@@ -190,9 +190,17 @@ DirEntry readDirEntry(std::istream &in)
     return entry;
 }
 
+/** Reserved leading payload byte. Pre-scrub readers test the byte's
+ *  truthiness as node presence, so it must stay nonzero until the
+ *  byte is dropped at the next format version; 0x03 additionally
+ *  keeps pre-scrub tooling that interprets the byte inert. Ignored
+ *  on read.
+ */
+const std::uint8_t ReservedByte(0x03);
+
 void writeNode(std::ostream &out, const NodeData &node)
 {
-    bin::write(out, std::uint8_t(node.coverage));
+    bin::write(out, ReservedByte);
     bin::write(out, node.minZ);
     bin::write(out, node.maxZ);
 }
@@ -200,8 +208,8 @@ void writeNode(std::ostream &out, const NodeData &node)
 NodeData readNode(mmapped::MemoryReader &reader)
 {
     NodeData node;
-    node.coverage
-        = NodeData::Coverage(reader.read<std::uint8_t>());
+    reader.read<std::uint8_t>(); // reserved
+    node.present = true;
     node.minZ = reader.read<std::uint16_t>();
     node.maxZ = reader.read<std::uint16_t>();
     return node;
@@ -286,6 +294,7 @@ void decodeQuadrant(mmapped::MemoryReader &reader, Page::Level &level
 
 void NodeData::heightRange(double min, double max)
 {
+    present = true;
     minZ = halfFloor(min);
     maxZ = halfCeil(max);
 }
