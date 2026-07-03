@@ -1,3 +1,17 @@
+cartolina-tileserver (1.120metanodestore) testing; urgency=medium
+
+  * metanode store: replace the coverage byte with a reserved constant;
+    payload presence is now defined by the page codec's quadrant tags
+  * unified pass: restrict store payload to the index-reachable node set,
+    dropping skipPartial leaves with no geometry below
+  * remove --reflag (CLI, code, operator guide); a policy change now
+    requires re-tiling instead
+  * rewrite mapproxy-mnstore check as a pair verifier: pairing digest,
+    payload/index-reachability agreement both ways, parent-range
+    containment, and the prune sibling rule
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Fri, 03 Jul 2026 20:05:56 +0200
+
 cartolina-tileserver (1.119metanodestore) testing; urgency=medium
 
   * merge mapproxy-calipers into mapproxy-tiling: a bare run now surveys the
