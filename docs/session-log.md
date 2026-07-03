@@ -5,6 +5,35 @@ This log records significant work and non-obvious findings that apply only to
 `cartolina-js/docs/wiki/session-log.md`:
 <https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/session-log.md>.
 
+## 2026-07-03 — metanode-store architecture review: coverage byte is design debt
+
+Reviewed the RFC 7 store/index split against the implementation, prompted
+by the head-scratcher that the store duplicates coverage information the
+flag index already owns. Findings: the serve path never reads the store's
+partial/full distinction — metanode existence and child flags are derived
+from the index (`validSubtree`), and the store is consumed strictly as a
+height lookup for nodes the index decided to serve. The only functional
+reader of the coverage byte is `--reflag`, whose justification is circular
+(the byte exists to enable reflag; reflag exists to re-derive flags from
+the byte), and `mapproxy-mnstore check` has never been run in production.
+Deviation 11's "raw measurement vs delivery view" framing is a post-hoc
+rationalization, not the design.
+
+Recorded as a biting backlog entry ("make the metanode store a pure height
+sidecar"): target is a 4-byte `{minZ, maxZ}` payload with the node set
+equal to the served set and `--reflag` deleted, deferred to ride the next
+structurally forced store-format break (the shallow-subtree / v7
+milestone) rather than churning the format for hygiene. A format-neutral
+staging idea — scrub the semantics now and declare the byte reserved
+(written as constant nonzero, since deployed readers use its truthiness as
+the presence test) — is under discussion and not yet recorded in the
+entry.
+
+For the record: store format v2 (orthometric heights, `bdbc870`) replaced
+v1 the same day it landed, pre-production, after review caught raw-SDS
+storage defeating the quadtree collapse on filled-ocean planets; v2 is the
+only format in the wild.
+
 ## 2026-07-02 — schedule unified tiling by critical path
 
 The unified tiling pass now uses a bounded FIFO worker pool instead of one

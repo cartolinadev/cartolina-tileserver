@@ -10,6 +10,82 @@ The metanode-store and unified-tiling work in this backlog is specified by
 
 New entries are added directly below this introduction, newest first.
 
+## REDESIGN (tileserver): make the metanode store a pure height sidecar — delete `--reflag` and the duplicated coverage
+
+**Opened:** 2026-07-03
+**Status:** open; execute at the next structurally forced store-format
+break (the shallow-subtree / v7 packaging milestone). Do not bump the
+format for this alone — but do not ship the v7 break without it.
+
+RFC 7's design was elegant: the flag tile index is the sole authority
+for tile existence and delivered flags — per-lod qtrees, with metanode
+existence and child flags inferred from them at delivery — and the
+store carries the one thing the index cannot: height ranges. The
+implementation muddied it. The store node grew a three-state coverage
+classification (`none`/`partial`/`full`) that duplicates the index's
+truth, and RFC 7 deviation 11 then promoted the duplication to a
+principle ("raw measurement vs policy-applied delivery view") to
+justify `--reflag`. That is a justification written after the fact for
+a byte nothing needed.
+
+The circularity, spelled out:
+
+- The serve path never reads partial/full. It derives existence and
+  child flags from the index (`validSubtree`) and uses the store
+  strictly as a height lookup for nodes the index already decided to
+  serve (`generator/metatile-store.cpp`). For everything delivery
+  does, the byte is dead weight.
+- The only functional reader of the distinction is `--reflag`
+  (`tiling/unified.cpp`) — a feature whose sole purpose is to re-derive
+  index flags from the byte whose sole purpose is to enable
+  `--reflag`. The policy flips it buys (skipPartial either way,
+  retro-prune) are one re-tile away on the unified pass: ~1 h for a
+  planet, minutes for a regional dataset.
+- The other reader, `mapproxy-mnstore check`, has never been run in
+  production. Not once.
+
+The result: what should have been a clean two-artifact contract —
+index owns flags, store owns heights — needs a page of explanation,
+and every reader of `mnstore.hpp` gets to wonder which of the two
+truths wins.
+
+Target, as store format v3:
+
+- Node payload is `{minZ, maxZ}` — 4 bytes, nothing else.
+  `NodeData::Coverage` is deleted; presence lives where it already
+  structurally lives, in the page codec's empty/uniform/internal tags.
+- The store's node set is exactly the served set: payload is emitted
+  iff the node is index-reachable (own flags, or a descendant's — the
+  structural-node case under `skipPartial`). One "served" bit
+  propagated up the mip ascent; a suppressed leaf with nothing below
+  it is not written. The stored semantics become one sentence: *for
+  every node the index serves, the source height range over its
+  cell.*
+- `--reflag` is deleted: code, CLI, and its operator-guide section.
+  Changing `skipPartial` or prune means re-tiling, documented with the
+  measured cost.
+- `mapproxy-mnstore check`, if it survives at all, verifies the pair
+  instead: pairing digest, store-payload ↔ index-reachability set
+  equality in both directions, and the aggregation invariant (parent
+  range contains children's). Stronger than the coverage check, and it
+  needs no byte.
+- The reader accepts v2 alongside v3: the height semantics and datum
+  are identical, the decoder just skips the coverage byte, and
+  leftover unreachable v2 payload is inert because traversal is
+  index-gated. The writer emits v3 only. Production v2 tilesets keep
+  serving untouched; drop the v2 decode branch once they roll over.
+- The sidecar invariant gets stated where people read:
+  `support/mnstore.hpp`, [tile-index.md](tile-index.md), the
+  [operator guide](metanode-store-operations.md), and an RFC 7
+  addendum superseding deviation 11.
+
+Why deferred rather than now: the format is a contract with production
+data, and v3's payoff is design integrity, not correctness or
+performance. Format versions change when a structural milestone forces
+them; hygiene rides along, never drives. The v7 packaging milestone
+already carries a format break and a re-tile — this cleanup boards
+that train or none.
+
 ## P1 CORRECTNESS: prune must not split child sets
 
 **Opened:** 2026-07-02
