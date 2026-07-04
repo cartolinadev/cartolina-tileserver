@@ -8,6 +8,14 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-04 — fix config parsing after startup-banner support
+
+Kept config-file options out of the command-line-only list used to reparse
+unrecognized arguments. The startup banner still receives both command-line
+and config-file options. Mixing the lists made programs that support
+unrecognized options reject a valid config file with Boost's "too many
+positional options" error.
+
 ## 2026-07-04 — split SRS/geoid helpers out of mesh.cpp into srs.cpp
 
 `support/srs.hpp` had never had its own `.cpp`; every function it declares
