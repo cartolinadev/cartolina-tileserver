@@ -11,6 +11,47 @@ The metanode-store and unified-tiling work in this backlog is specified by
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## REDESIGN: retire the in-tree MVT driver in favor of GDAL's upstream driver
+
+**Opened:** 2026-07-04
+**Status:** deferred, low priority — the cross-tile staging race it
+enabled is fixed at the generator level (`mvt:` prefix, 2026-07-04);
+nothing is currently broken. Revisit when touching the driver or the
+heightcoding pipeline anyway.
+
+The in-tree MVT driver (`src/gdal-drivers/mvt.cpp`) predates GDAL's
+built-in MVT driver (GDAL ≥ 2.3, 2018) and now survives on inertia, not
+on merit. Its weaknesses, plainly:
+
+- it reads through `std::ifstream`, not VSI, so it cannot open
+  `/vsimem/` or `/vsicurl/` paths — this is what forced GDAL's HTTP
+  driver into the shared-basename temp-file fallback behind the
+  wrong-tile race;
+- its `Identify` claims *every* file unconditionally, so its `Open` is
+  probed for every vector open in the process and rejection relies on
+  protobuf parse failure — and an empty/unreadable input parses as a
+  valid empty tile;
+- its geometry decoding is ad-hoc (clockwise-ring heuristics) rather
+  than MVT-spec 2.1 winding rules;
+- registration deregisters the upstream driver by name, so the process
+  silently loses upstream's MBTiles/directory/metadata.json support.
+
+What keeps it alive: the `MVT_SRS` and `MVT_EXTENTS` open options that
+place a single tile into the node's SDS SRS and extents. This matters
+less than it looks. A tiled source must share the reference frame's
+subtree tiling, and the MVT producer ecosystem is WebMercator-locked,
+so tiled-MVT resources live in the pseudomerc subtree where the SDS
+*is* EPSG:3857 — upstream's assumption. Upstream's single-tile options
+(`GEOREF_TOPX/TOPY/TILEDIMX/TILEDIMY`) cover the extents. The one real
+delta to verify: `MVT_SRS` receives `sds(nodeInfo, geoidGrid)`, i.e.
+3857 with the geoid grid baked into the SRS string, and the
+heightcoding worker reads the layer SRS back off the dataset for
+vertical adjustment; upstream reports plain 3857. The pipeline already
+has an SRS-independent path for this (`vectorGeoidGrid` →
+`config.vectorDsSrs`), so the migration is confirming that path fully
+replaces the tag, after which the in-tree driver can go and remote
+fetch becomes upstream's native `MVT:/vsicurl/…` path.
+
 ## REDESIGN (tileserver): package the flag index and height sidecar as one file
 
 **Opened:** 2026-07-03
