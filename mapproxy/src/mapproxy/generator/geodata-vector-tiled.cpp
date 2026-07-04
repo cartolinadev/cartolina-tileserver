@@ -29,6 +29,7 @@
 
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "utility/premain.hpp"
 #include "utility/raise.hpp"
@@ -51,7 +52,7 @@
 #include "factory.hpp"
 #include "metatile.hpp"
 
-//namespace ba = boost::algorithm;
+namespace ba = boost::algorithm;
 
 namespace vr = vtslibs::registry;
 namespace fs = boost::filesystem;
@@ -77,7 +78,25 @@ utility::PreMain Factory::register_([]()
 
 /** NOTICE: increment each time some data-related bug is fixed.
  */
-int GeneratorRevision(0);
+int GeneratorRevision(1);
+
+/** Remote tiles must be downloaded by the MVT driver itself (mvt: prefix).
+ *  A bare http(s) URL is claimed by GDAL's generic HTTP driver, which stages
+ *  the download in a temporary file named solely after the URL basename
+ *  (typically just "{locy}.pbf"); concurrent tile requests in separate warper
+ *  processes overwrite each other's staging file and a tile can be silently
+ *  built from another tile's data.
+ */
+std::string mvtDataset(const std::string &dataset)
+{
+    if (ba::istarts_with(dataset, "http:")
+        || ba::istarts_with(dataset, "https:")
+        || ba::istarts_with(dataset, "ftp:"))
+    {
+        return "mvt:" + dataset;
+    }
+    return dataset;
+}
 
 } // namespace
 
@@ -87,7 +106,7 @@ GeodataVectorTiled::GeodataVectorTiled(const Params &params)
     , dem_(absoluteDataset(definition_.dem.dataset + "/dem")
            , definition_.dem.geoidGrid)
     , effectiveGsdArea_(), effectiveGsdAreaComputed_(false)
-    , tileFile_(definition_.dataset)
+    , tileFile_(mvtDataset(definition_.dataset))
     , physicalSrs_
       (vr::system.srs(resource().referenceFrame->model.physicalSrs))
     , warpFallbackAvailable_(false)

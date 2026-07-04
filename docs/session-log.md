@@ -8,6 +8,33 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-04 — geodata-vector-tiled: fix cross-tile data race on remote MVT
+
+Fixed the long-standing race in which a `geodata-vector-tiled` resource
+occasionally served a tile cleanly built from a *different* tile's source
+data (or an empty tile), which a CDN then caches for the full max-age.
+
+A bare `http(s)://…` tile URL is not claimed by our MVT driver (its remote
+branch matches only `.mvt`/`.vector.pbf` names, and GDAL probes its generic
+HTTP driver first regardless). GDAL's HTTP driver stages the download for
+re-open, and because our driver reads through `std::ifstream` rather than
+VSI, the staging falls back to a real temporary file named after the URL
+basename alone — typically just `{locy}.pbf`, shared by all warper processes
+for every tile with the same row. Concurrent requests truncate and unlink
+each other's staging file; a request can then parse a neighbor's fully
+written file (clean wrong tile), a truncated one (valid *empty* protobuf →
+empty tile), or none (500).
+
+The generator now prefixes remote datasets with `mvt:`, routing the download
+into the MVT driver itself, which fetches straight into memory — no staging
+file, no cross-process sharing, and one fetch instead of fetch+copy+reopen.
+Reproduced before the fix by hammering same-row tiles concurrently; the same
+load on the fixed binary shows no anomalies. `GeneratorRevision` is bumped
+so deployed clients regenerate cached geodata (`?gr=1`).
+
+For already-deployed binaries, prefixing the resource definition's `dataset`
+URL with `mvt:` is an equivalent config-only workaround.
+
 ## 2026-07-04 — fix config parsing after startup-banner support
 
 Kept config-file options out of the command-line-only list used to reparse
