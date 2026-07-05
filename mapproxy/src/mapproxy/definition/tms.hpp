@@ -215,6 +215,9 @@ private:
 };
 
 
+/** Obsolete Bing imagery driver retained for compatibility.
+ * TODO: Delete tms-bing support.
+ */
 struct TmsBing : public TmsCommon {
     std::string metadataUrl;
 

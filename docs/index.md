@@ -24,9 +24,9 @@ wiki:
 
 ## Reference
 
-- [Resource definitions](resources.md) — an older resource-schema reference.
-  It is incomplete and may lag the implementation; verify claims against the
-  resource definitions in `mapproxy/src/mapproxy/definition/`.
+- [Resource definitions](resources.md) — configuration for established TMS,
+  surface, and geodata drivers, including Cartolina's DEM-derived raster
+  generators.
 - [Developer notes](../AGENTS.md) — building, running, repository conventions,
   and documentation ownership.
 - [Backlog](backlog.md) — deferred work confined to the tileserver.

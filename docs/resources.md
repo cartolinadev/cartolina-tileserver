@@ -1,552 +1,743 @@
-# Preamble
+# Configuring resources
 
-This is an older, incomplete reference for mapproxy resource definitions. It
-may lag the implementation. Verify it against the resource definitions under
-`mapproxy/src/mapproxy/definition/` and update it when discrepancies are found.
+A resource tells mapproxy what data to serve and how to serve it. This page
+explains the resource file from an operator's point of view.
 
-See [index.md](index.md) for the tileserver documentation contents.
+There are three kinds of resource:
 
-# Resource definition file
+- `tms`: a raster layer, such as aerial imagery, hillshade, or a normal map;
+- `surface`: 3D terrain generated from a digital elevation model (DEM) or a
+  reference ellipsoid; and
+- `geodata`: vector features or a 3D model.
 
-Most common way to define resources for mapproxy is to provide JSON resource definition file and point mapproxy to it by specifying its path in `resource-backend.path` configuration parameter.
+The purpose of all resources is to provide building blocks for cartolina-js
+[map styles][map-styles]: surfaces define terrain, and `tms` and `geodata` are
+used as layers.
 
-The resource definition file can contain resource definitions or include of subsequent definition files:
+The `driver` selects how mapproxy produces that resource. For example,
+`tms-raster` serves imagery while `tms-gdaldem` derives hillshade or slope
+from a DEM.
+
+A [reference frame][reference-frames] is the named coordinate system and tile
+grid in which mapproxy serves a resource. Common examples are `melown2015` and
+`earth-qsc`. The reference frame must already exist in the registry used by
+the server.
+
+[reference-frames]:
+  https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/reference-frames.md
+[map-styles]:
+  https://github.com/cartolinadev/cartolina-js/blob/main/README.md#minimal-map-style
+[lod-selection]:
+  https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/lod-selection.md
+[openmaptiles]:
+  https://openmaptiles.org/schema/
+
+## Loading resource files
+
+The main mapproxy configuration names the first resource file:
+
+```ini
+[resource-backend]
+type = conffile
+path = /etc/vts/mapproxy/resources.json
+root = /var/vts/mapproxy/datasets
 ```
+
+Relative dataset paths in resource definitions are resolved below `root`.
+
+The resource file contains one JSON resource object or an array of objects.
+It can also include other files:
+
+```json
 [
-    Resource,    // see Basic resource layout below
-    Resource,
-    ...
-    { "include": String }, // see below
-    ...
+    { "include": "imagery.d/*.json" },
+    { "include": "terrain.d/*.json" }
 ]
 ```
-where include `String` can be either exact path or a glob pattern (expansion to zero files is not an error) and may be relative to current resource file.
 
-☛ If the file contains single entry (resource or include) the surrounding array is not required.
+An include path is relative to the file that contains it. Wildcards are
+allowed. It is not an error when a wildcard matches no files.
 
-# Supported resource types/drivers
+## A complete resource
 
-Mapproxy supports following resource types:
- * tms: *tile map service* (bound layer)
- * surface: surfaces (i.e. tileset generator)
- * geodata: vector free layers, monolithic or tiled
+This example serves a prepared imagery dataset as an image layer:
 
-Mapproxy provides multiple drivers (*generators*) for each resource type.
-
-## Basic resource layout
-
-NB: In following, all resource definitions are documented by pseudo format. Actual configuration is either
-a JSON file on disk (for JSON resource backend) or a python data tree. 
- 
- * `{}`: JSON object/python dictionary
- * `[]` JSON/python array
- * `String`: string data type
- * `Int`: integral JSON number/python integer
- * `Double`: real JSON number/python double
- * `Boolean`: boolean JSON/python value
- * `Array<type>`: unbounded array of given type(s)
- * `Array<type, size>`: bounded array of given type(s) and size
- * `Optional` given entry is optional
- * `Enum` string data type limited to enumerated values
- * `Any` any data type
- * `?` no fixed name
- 
-Special types:
- * `SRS` string with spatial reference system. Supports Proj.4 string, EPSG:code, EPSG:code+code, WKT string and custom [ENU](https://github.com/melowntech/true3d-format-spec/blob/master/enu.md).
- * `Point3` alias to Array<Double, 3>, point in Cartesian space
- 
-Complex datatypes:
-
-```javascript
-ResourceId: {
-    String group        // group this resource belongs to
-    String id           // resource identifier (withing group)
-}
-```
-
-```javascript
-Resampling: Enum {
-    <GDAL-supported resampling algorithms>
-    texture
-    dem
-}
-```
-Where `texture` is resampling suitable for rextures (`average` for scales smaller than 0.5, `cubic` otherwise) 
-and `dem` is suitable for terrain (`average` for scales smaller than 0.5, `cubicspline` otherwise).
-
-```javascript
-Credits: {
-    Object <string-id> : {
-        Int id
-        String notice
+```json
+{
+    "comment": "Example aerial imagery",
+    "group": "example",
+    "id": "aerial",
+    "type": "tms",
+    "driver": "tms-raster",
+    "referenceFrames": {
+        "melown2015": {
+            "lodRange": [0, 18],
+            "tileRange": [[0, 0], [1, 1]]
+        }
+    },
+    "credits": [],
+    "definition": {
+        "dataset": "imagery/aerial/dataset",
+        "format": "jpg"
     }
 }
 ```
-Both string and numeric id should be unique across particular VTS installation. Use numeric ids in range [200, 65535]. Notice supports `{Y}` and `{copy}` templates and hyperlinks using syntax `[<URL> <link text>]`.
 
-```javascript
-Registry: {
-    Credits credits
+The top-level fields mean:
+
+- `group` and `id`: the resource's URL identifier. Together they must be
+  unique within each reference frame and resource type.
+- `type`: `tms`, `surface`, or `geodata`.
+- `driver`: the production method described later on this page.
+- `referenceFrames`: where the resource is available and which tiles it may
+  produce.
+- `credits`: credit identifiers shown to clients. The field is required; use
+  an empty array when no credit applies.
+- `definition`: settings understood by the selected driver.
+- `comment`: optional operator note. It does not affect output.
+- `revision`: optional integer added to generated URLs. Change it when clients
+  must stop using cached output.
+- `registry`: optional local registry entries, usually credits.
+- `maxAge`: optional cache lifetime overrides, in seconds. Its members are
+  `config`, `support`, `registry`, and `data`.
+
+### Tile coverage
+
+Raster layers, terrain, and tiled vector layers need a level-of-detail (LOD)
+and tile range for each [reference frame][reference-frames]:
+
+```json
+"referenceFrames": {
+    "melown2015": {
+        "lodRange": [4, 16],
+        "tileRange": [[2, 1], [5, 3]]
+    }
 }
 ```
 
-Basic resource definition:
+`lodRange` includes both endpoints. `[4, 16]` therefore serves LODs 4 through
+16. `tileRange` is the inclusive range of tiles at the first LOD in
+`lodRange`: `[[minimumX, minimumY], [maximumX, maximumY]]`.
 
-```javascript
-Object Resource = {
-    String comment      // any comment, ignored
-    String group        // group this resource belongs to
-    String id           // resource identifier (withing group)
-    String type         // data type (tms, surface, geodata)
-    String driver       // data generator (see below)
-    Registry registry   // additional local resource registry, see above
-    Array<String, Int> credits // list of credits identifiers (either textual or numeric)
-    Object referenceFrames = { // range definitions for different reference frames
-        Object ? = { // reference frame ID, for example melown2015
-            lodRange: [ Int, Int ]               // LOD range this resource produces data
-            tileRange: [[Int, Int], [Int, Int]]  // tile range: minx, miny, maxx, maxy; inclusive range
+A vector or mesh resource served as one file does not need tile ranges. List
+only the reference-frame IDs:
+
+```json
+"referenceFrames": ["melown2015", "earth-qsc"]
+```
+
+Mapproxy creates one addressable resource for every listed reference frame.
+
+### Credits
+
+`credits` may contain string or numeric IDs from the system registry or the
+resource's local `registry`. String and numeric IDs must be unique across the
+installation.
+
+Credit notices may contain `{Y}` for the current year and `{copy}` for the
+copyright symbol.
+
+For example, this resource defines and uses its own credit:
+
+```json
+"registry": {
+    "credits": {
+        "example-provider": {
+            "id": 200,
+            "notice": "{copy} {Y} Example Provider"
         }
     }
-    Object definition = {...} // driver-dependent definition, see below
+},
+"credits": ["example-provider"]
+```
+
+Choose a numeric ID from 200 through 65535 that no other credit in the
+installation uses.
+
+## Values shared by several drivers
+
+### Raster format
+
+For TMS drivers that provide a `format` field, `definition.format` selects the
+encoding and filename extension of generated raster tiles. The possible
+values are `jpg`, `png`, and `webp`. Each driver section gives its default and
+any restrictions.
+
+Use JPEG for opaque photographic imagery. Use PNG or WebP when the output
+needs transparency or lossless storage.
+
+### Resampling
+
+`definition.resampling` controls how input pixels are combined when mapproxy
+warps or resizes a raster. It accepts:
+
+- `nearest`, `bilinear`, `cubic`, `cubicspline`, `lanczos`, `average`,
+  `mode`, `minimum`, `maximum`, `median`, `q1`, or `q3`;
+- `texture`, which chooses `average` for heavy downsampling and `cubic` at
+  other scales; and
+- `dem`, which chooses `average` for heavy downsampling and `cubicspline` at
+  other scales.
+
+Use `texture` for ordinary imagery, `dem` for continuous elevation, and
+`mode` or `nearest` for category numbers such as land-cover classes.
+
+### URL templates
+
+Remote raster services and tiled vector services use templates to insert the
+requested tile coordinates into a URL or dataset path. Some reference frames
+divide their tile tree into regions that use different coordinate systems.
+Each such region is a spatial division node.
+
+- `{lod}`, `{x}`, `{y}`: tile coordinates in the complete reference frame.
+- `{loclod}`, `{locx}`, `{locy}`: coordinates within the spatial division node
+  that contains the tile. Use these when the input tiling matches one region
+  of a reference frame, such as its Web Mercator region.
+- `{srs}`: the coordinate system used by that spatial division node.
+- `{rf}`: reference-frame ID.
+- `{sub}`: sub-part number, used by resources that produce several files for
+  one tile.
+- `{alt(a,b,c)}`: choose one listed string consistently for each tile. This
+  can distribute requests across equivalent server hostnames.
+- `{switch(variable,value:replacement,...,*:fallback)}`: replace the value of
+  one of the variables listed above. For example,
+  `{switch(rf,melown2015:earth,earth-qsc:qsc,*:other)}` produces `earth` for
+  `melown2015`, `qsc` for `earth-qsc`, and `other` for any other reference
+  frame. Use `*:*` as the fallback to keep an unmatched value unchanged. With
+  no fallback, an unmatched value produces an empty string.
+
+### Raster input
+
+#### Raw imagery
+
+The main inputs of `tms-raster`, `tms-normalmap`, and `tms-specularmap` may be
+raster files such as GeoTIFF, VRT, JPEG, or PNG. Mapproxy opens and warps the
+raster when a tile is requested. A separate `mask` can limit its coverage.
+
+#### Prepared imagery
+
+The same drivers also accept a prepared imagery directory. It contains the
+image as `ophoto` and a `tiling.<reference-frame>` file that records its tile
+coverage. This is optional for the main image input; it is not a prerequisite
+for serving imagery.
+
+Preparation lets mapproxy tell the client which tiles contain data and
+whether their imagery is opaque, transparent, or mixed. The client can avoid
+requests outside the data coverage and make better rendering decisions. This
+reduces unnecessary data transfer and rendering work.
+
+The optional `landcover.dataset` used by `tms-normalmap` and `surface-dem` is
+an exception: it must be a prepared imagery directory because those drivers
+read its `ophoto` raster.
+
+#### Prepared DEM
+
+`tms-gdaldem` and `surface-dem` require a prepared DEM directory. It contains
+the elevation raster as `dem`, tile-coverage information, and the terrain
+metadata prepared for each reference frame.
+
+These directories are created with [Tileserver tools](tileserver-tools.md).
+`mapproxy-setup-resource` runs the end-to-end workflow; its stages use tools
+such as `generatevrtwo` and `mapproxy-tiling`. For DEM preparation, follow the
+[metanode-store operator guide](metanode-store-operations.md).
+
+## Raster layers (`tms`)
+
+A TMS resource is a raster map layer. It provides a `cartolina-tms` data
+source for cartolina-js [map styles][map-styles]. Its driver defines how input
+data is transformed into the raster tiles served to clients:
+
+- `tms-raster` warps a raster image into ordinary image tiles.
+- `tms-gdaldem` turns elevation values into hillshade, slope, aspect, or
+  another relief image.
+- `tms-normalmap` turns brightness changes in an image into normal-map tiles
+  for bump mapping.
+- `tms-specularmap` turns land-cover class IDs into reflectivity and shininess
+  values for terrain lighting.
+- `tms-raster-remote` does not transform pixels; it directs clients to tiles
+  served by another service.
+
+And, as a diagnostic device:
+
+- `tms-raster-patchwork` has no input data; it generates a checkered test
+  pattern.
+
+
+### `tms-raster`: serve imagery
+
+Use `tms-raster` to serve ordinary imagery — a raster file or a prepared
+imagery dataset — as a `diffuse-map` layer in a cartolina-js
+[map style][map-styles].
+
+```json
+"definition": {
+    "dataset": "imagery/aerial/dataset",
+    "format": "jpg",
+    "resampling": "texture"
 }
 ```
 
-Some resource generators do not support tiling (like `geodata-vector`). In that case tile and lod ranges
-can be omitted and `referenceFrames` becomes an array of reference frame IDs.
+- `dataset` (required): raster file or prepared imagery directory.
+- `mask` (optional): reference-frame mask or another raster used as a mask.
+- `format` (default `jpg`): `jpg`, `png`, or `webp`.
+- `transparent` (default `false`): when `true`, serve PNG with transparency.
+- `erodeMask` (default `false`): shrink the valid area of the mask slightly
+  to avoid coloured edges around missing data.
+- `resampling` (optional): pixel resampling method. When omitted, mapproxy
+  uses its texture resampling profile.
 
-## URL templates
+### `tms-gdaldem`: derive relief from a DEM
 
-This is documented elsewhere but as a convenience we provide URL template expansion documentation here.
+Use `tms-gdaldem` to generate hillshade, slope, aspect, terrain-ruggedness,
+topographic-position, or roughness tiles from a DEM, served as a `diffuse-map`
+layer in a cartolina-js [map style][map-styles].
 
-Each tile has its global and local `tileId`. For simple reference frames (like `webmerc-projected`)
-global and local identifers are the same.
-
-For complex reference frames (`melown2015`, `earth-qsc`) global identifier is from tile tree root, i.e. from `0-0-0`.
-Local identifier is tile identifier relative to its reference frame subtree.
-
-For example (in `melown2015`):
-
- * tile with global ID `10-256-256` is in the `pseudomerc` subtree with root at `1-0-0` and its local ID is `9-256-256`
- * tile with global ID `10-768-512` is in the `steres-wgs84` subtree with root at `1-1-0` and its locaal ID is also `9-256-256`
-
-Available expansion strings. Only some make sense for templates used in mapproxy.
-
- * `{lod}`    global tile LOD
- * `{x}`      global tile X index
- * `{y}`      global tile Y index
- * `{loclod}` local tile LOD
- * `{locx}`   local tile X index
- * `{locy}`   local tile Y index
- * `{sub}`    sub-tile identifier (e.g. submesh index in atlas image)
- * `{srs}`    symbolic name of SRS in the current reference frame subtree
- * `{rf}`     reference frame identifier
- * `{alt(1,2,3,4)}` exands to one of given strings
- * `{ppx}`    tile's old PP space X index (makes sense only in ppspace)
- * `{ppy}`    tile's old PP space Y index (makes sense only in ppspace)
- * `{Y}`      current year (used in credits definition)
- * `{copy}`   copyright symbol (used in credits definition)
- * `{switch(var,src:dst,src:dst,...,*:dst}`:
-     * if value == src then output dst
-     * special source value `*` marks default handler
-     * special destination value `*` means to output the value as is
-
-## TMS drivers
-
-### Introspection
-
-If browsing is enabled mapproxy handles these URLs:
- * `index.html`: [Leaflet](https://leafletjs.com/)-based boundlayer browser
- * `index.js`: javascript support for (`index.html`)
- 
-### Common TMS configuration
-
-```javascript
-definition = {
-    Optional Any options           // Boundlayer options
+```json
+"definition": {
+    "dataset": "terrain/dem/dataset",
+    "processing": "hillshade",
+    "processingOptions": ["-multidirectional"],
+    "format": "jpg",
+    "resampling": "dem"
 }
 ```
 
-Boundlayer options are passed as-is to the `boundlayer.conf`.
+- `dataset` (required): prepared DEM dataset directory. It must contain the
+  `dem` raster and a `tiling.<reference-frame>` tile index.
+- `processing` (required): `hillshade`, `slope`, `aspect`, `color-relief`,
+  `TRI`, `TPI`, or `roughness`.
+- `processingOptions` (default `[]`): additional options for the selected DEM
+  operation, written as an array of strings.
+- `format` (default `jpg`): generated tile format.
+- `resampling` (default `dem`): resampling applied to the DEM.
+- `erodeMask` (default `false`): shrink the valid data mask slightly.
+- `poProgressions` (optional): vary a numeric processing option by LOD, as
+  explained below.
+- `colorFile` (optional): reserved for `color-relief`, but not currently
+  supported. Setting it produces a warning and has no effect.
 
-### Driver: tms-raster
+Use `poProgressions` only when a numeric processing option should change with
+LOD.
+Each member names an option from `processingOptions` and has the form
+`[baseLod, factor]`:
 
-Raster-based bound layer generator. Uses any raster GDAL dataset as its data source. Supports optional data masking.
-
-```javascript
-definition = {
-    String dataset                 // path to GDAL dataset
-    Optional String mask           // path to RF mask or masking GDAL dataset
-    Optional String format         // output image format, "jpg" or "png" (defaults to "jpg")
-    Optional Boolean transparent   // Boundlayer is transparent, forces format to "png"
-    Optional Resampling resampling // Resampling to use for tile texture generation, default 'texture'
+```json
+"processingOptions": ["-z", "1.0"],
+"poProgressions": {
+    "-z": [12, 1.2]
 }
 ```
 
-### Driver: tms-raster-remote
+At a requested LOD, the option value is multiplied by
+`factor^(baseLod - requestedLod)`.
 
-Raster bound layer generator. Imagery is pointer to external resource via `remoteUrl` (a URL template). Supports optional data masking.
+In this example `-z` remains `1.0` at LOD 12, becomes `1.2` at LOD 11, and
+becomes `1.44` at lod 10. Using `poProgressions` for  '-z' is a typical choice:
+it allows for making vertical exaggeration vary exponentially with LOD.
 
-```javascript
-definition = {
-    String remoteUrl             // Imagery URL template.
-    Optional String mask         // path to RF mask or masking GDAL dataset
+### `tms-normalmap`: derive bump detail from an image
+
+Use `tms-normalmap` to provide `bump-map` layers to cartolina-js
+[map styles][map-styles]. Bump maps turn brightness changes in satellite or
+aerial imagery into three-dimensional texture on coarser terrain.
+
+```json
+"definition": {
+    "dataset": "imagery/aerial/dataset",
+    "format": "webp",
+    "resampling": "cubic",
+    "zFactor": 0.427,
+    "invertRelief": true
+}
+```
+The driver accepts the `tms-raster` fields, with these rules:
+
+- `dataset` is the source image and is required. It accepts the same raster
+  file or prepared imagery directory as `tms-raster`.
+- `format` is always `webp`; other values are rejected.
+- `resampling` defaults to `cubic`.
+- `zFactor` (default `0.427`) controls the strength of the apparent relief.
+- `invertRelief` (default `true`) treats darker pixels as raised detail. Set
+  it to `false` when brighter pixels should be raised instead.
+- `landcover` (optional) supplies a land-cover raster and the class metadata
+  needed to interpret its pixel values:
+
+```json
+"landcover": {
+    "dataset": "landcover/dataset",
+    "classdef": "landcover/classes.json"
 }
 ```
 
+`landcover.dataset` must be a prepared imagery directory whose `ophoto`
+raster contains 8-bit class IDs. For each pixel, mapproxy finds the entry with
+the same `id` in `landcover.classdef`. To remove image-derived bump detail
+from water, for example, give the water value an entry with `"isFlat": true`.
+The complete class-file format is described after `tms-specularmap`.
 
-### Driver: tms-patchwork
+### `tms-specularmap`: derive material properties from land cover
 
-Simple raster bound layer generator. Generates color checkered tiles. Supports optional data masking.
+Use `tms-specularmap` to provide `specular-map` layers to cartolina-js
+[map styles][map-styles]. Specular maps turn land-cover category numbers into
+material properties used in terrain lighting.
 
-```javascript
-definition = {
-    Optional String mask         // path to RF mask or masking GDAL dataset
-    Optional String format       // output image format, "jpg" or "png" (defaults to "jpg")
+```json
+"definition": {
+    "dataset": "landcover/dataset",
+    "classdef": "landcover/classes.json",
+    "format": "png",
+    "resampling": "mode"
 }
 ```
 
-### Driver: tms-bing
+- `dataset` (required): one-band, one-byte raster file or prepared imagery
+  directory containing land-cover class IDs from 0 through 255.
+- `classdef` (required): class file in the format described below.
+- `format` (default `png`): `png` or `webp`.
+- `resampling` (default `mode`): `mode` or `nearest`. Other methods would
+  invent category numbers and are rejected.
+- The other `tms-raster` fields are also accepted.
 
-Bound layer generator for remote Bing data. Valid session is generated via metatada URL.
+### Land-cover classes for normal and specular maps
 
-```javascript
-definition = {
-    String metadataUrl           // Bing API metadata URL. See Bing API documentation for more info.
+The normal-map and specular-map drivers share a JSON class file. It is an
+array with one object for each numeric value in the land-cover raster:
+
+```json
+[
+    {
+        "id": 0,
+        "name": "water",
+        "isFlat": true,
+        "specular-reflectivity": 12,
+        "shininess-exp": 10
+    },
+    {
+        "id": 1,
+        "name": "marsh",
+        "isFlat": false,
+        "specular-reflectivity": 3,
+        "shininess-exp": 2
+    }
+]
+```
+
+- `id` and `name` are required. `id` is the matching land-cover raster value,
+  from 0 through 255; `name` records what that value represents, such as
+  `water` or `woodland`.
+- `isFlat` defaults to `false`. When it is `true`, `tms-normalmap` writes a
+  flat normal for pixels with that class ID, so brightness variations in the
+  source image do not create bump detail there.
+- `specular-reflectivity` and `shininess-exp` default to `0`. Both values are 
+   integers between 0 (lowest) and 15 (highest).
+
+### `tms-raster-patchwork`: generate a test pattern
+
+This is a diagnostic driver driver generating checkered tiles. It needs no 
+source dataset.
+
+- `mask` (optional): limits where tiles are generated.
+- `format` (default `jpg`): output format.
+
+### `tms-raster-remote`: point to remote tiles
+
+This driver publishes a raster layer whose images come from another service.
+
+- `remoteUrl` (required): image URL template.
+- `mask` (optional): limits where the remote layer is available.
+
+### Advanced client options
+
+Each TMS resource publishes `boundlayer.json`, which tells clients how to
+request its tiles. Most operators can leave `definition.options` unset. When
+present, its JSON value is copied to the `options` member of
+`boundlayer.json`.
+
+## Terrain (`surface`)
+
+A surface resource produces terrain meshes, terrain metadata, height-query
+tiles, normal maps, and a tile index. It also serves `freelayer.json`, which
+allows the terrain mesh to be used as a free layer.
+
+### Settings shared by terrain drivers
+
+- `heightFunction` (optional): transform DEM heights before generating output.
+
+### Changing terrain height
+
+The supported height function is `superelevation`:
+
+```json
+"heightFunction": {
+    "function": "superelevation",
+    "heightRange": [0.0, 3000.0],
+    "scaleRange": [1.0, 1.5]
 }
 ```
 
-## Surface drivers
+The first height in `heightRange` receives the first scale in `scaleRange`;
+the second height receives the second scale. Values between them are scaled
+smoothly. Values outside the height range use the nearest endpoint scale.
 
-Surface drivers generate a meshed surface that can be used directly as a single surface or merged into VTS storage as
-a remote tileset.
-In addition, a `freelayer.json` file is provided allowing generated surface to act as a `mesh-tiles` free layer.
+### `surface-dem`: terrain from elevation data
 
-### Introspection interface
-
-If browsing is enabled mapproxy handles URLs:
- * `index.html`: built-in Cartolina style-based browser
- * `style.json`: generated Cartolina style used by `index.html`
- * `mapConfig.json`: generated surface data manifest used by the
-   style-based browser to load the reference frame and tile URL templates
-
-### Cesium terrain provider
-
-If resource's reference frame contains the TMS extension any surface driver will handle URLs for non-VTS [Cesium Terrain Provider](https://cesiumjs.org/Cesium/Build/Documentation/CesiumTerrainProvider.html):
- * `{lod}-{x}-{y}.terrain`: terrain [quantized meshes](https://github.com/AnalyticalGraphicsInc/quantized-mesh)
- * `layer.json`: terrain metadata
- 
-Note: URL provided tile ID (`urlId`: lod-x-y) is mapped via TMS extension configuration to real tile ID (`tileId`: lod'-x'-y'). I.e. `urlId`'s y-component is optionally flipped (based on `tms.flipY` option, defaults to `true`) and then shifted under TMS root (`tms.rootId`, defaults to `0-0-0`).
-
-Generated mesh tiles are identical to VTS surface tiles, having these properties:
- * different encoding [format](https://github.com/AnalyticalGraphicsInc/quantized-mesh)
- * while there are no physical skirts border vertices are marked
- * no texture coordinates
- * no extensions (no normal vectors etc.)
- 
-In addition, if browsing is enabled these introspection URLs are handled
- * `cesium.html`: built-in terrain browser (available even without terrain support)
- * `cesium.js`: javascript support for (`cesium.html`)
- * `cesium.conf`: configuration for built-in introspection browser
- 
-☛ While it is possible to add the TMS extension to any reference frame please note that it was designed for the dedicated `tms-global-geodetic` reference frame. Any other reference frame would not work with Cesium's machinery that expect [TMS `global-geodetic` profile](http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification#global-geodetic).
-
-☛ Please, do not use the `tms-global-geodetic` reference frame for anything else than terrain provider support. This reference frame is inappropriate for VTS-based clients because the underlying [projection (eqc)](https://en.wikipedia.org/wiki/Equirectangular_projection) is neither equal area nor [conformal](https://en.wikipedia.org/wiki/Conformal_map_projection).
-
-☛ However, the only other use the `tms-global-geodetic` reference frame in VTS is the `tms` driver when generating data for [Cesium Imagery Provider](https://cesiumjs.org/Cesium/Build/Documentation/UrlTemplateImageryProvider.html); please, bear in mind that there is no extra imagery provider interface and the URL translation must be done manually in the javascript code. Introspection interface does it automatically, though.
-
-
-### Common surface driver configuration options
-
-All surface drivers support these (optional) options:
-```javascript
-    Optional String geoidGrid           // name of Proj.4's geoid grid file (e.g. `egm96_15.gtx`).
-    Optional Double nominalTexelSize    // nominal resolution (meter/pixel);
-                                        // reported by mapproxy-calipers
-    Optional Int mergeBottomLod         // Reported in generated tileset.conf, speeds up merge
-                                        // with other surfaces
-    Optional Object heightFunction      // Height manipulation function. See below.
-    Optional Object introspection       // Introspection info used when using mapConfig.json served
-                                        // by mapproxy. See below.
-```
-
-Introspection is extended configuration for mapproxy served `mapConfig.json` (only when browsing is enabled).
-
-```javascript
-introspection = {
-    Optional Array position;                       // VTS position in JSON/python format
-    Optional Layer/Array<Layer> tms                // bound layer(s) mapped on the surface, see below 
-    Optional Layer/Array<Layer> geodata            // deprecated; ignored by the style-based browser and logged with W4
-    Optional Object browserOptions                 // default runtime options for index.html
+```json
+"definition": {
+    "dataset": "terrain/dem/dataset"
 }
 ```
 
-`tms` entries are translated to `diffuse-map` layers in the generated
-Cartolina style. `geodata` is retained only for legacy mapConfig
-compatibility in this release; new style-based surface introspection
-does not render it and emits a W4 warning when it is configured.
+- `dataset` (required): prepared DEM dataset directory. It contains the `dem`
+  raster and the tiling information used for this resource.
+- `mask` (optional): limits terrain generation to the valid data area.
+- `textureLayerId` (default `0`): texture layer number written to the mesh.
+- `geoidGrid` (optional): grid file for DEM heights measured from a geoid.
+- `landcover` (optional): `dataset` and `classdef` paths used when generating
+  terrain normal maps. `dataset` is a prepared imagery directory whose
+  `ophoto` raster contains one-byte class IDs.
+- `heightcodingAlias` (optional): another name by which vector resources can
+  select this DEM for height coding.
+- The shared terrain settings are accepted.
 
-The `Layer` type in the `introspection` above (`tms`/`geodata`) is a (bound/free) layer reference.
-It can be either a `ResourceId`:
-```javascript
-Layer = ResourceId: {
-    String group        // group this resource belongs to
-    String id           // resource identifier (withing group)
+Without `geoidGrid`, mapproxy treats DEM values as heights above the
+ellipsoid. Configure a grid when the DEM values are heights above a geoid.
+The DEM and grid must describe compatible horizontal and vertical coordinate
+systems.
+
+### `surface-meta`: combine terrain and imagery
+
+This driver places an existing raster resource directly into an existing
+terrain resource:
+
+```json
+"definition": {
+    "surface": { "group": "terrain", "id": "dem" },
+    "tms": { "group": "imagery", "id": "aerial" }
 }
 ```
 
-or a URL of bound/free layer definition:
-```javascript
-Layer = {
-    String id                           // Bound/free layer identifier
-    String url                          // URL template of layer definition (boundlayer.json or freeelayer.json)
+Both resources must exist in the same reference frame. Their credits are
+combined. `surface-meta` does not accept the shared terrain settings.
+
+Restart mapproxy after changing either referenced resource. Those changes are
+not picked up reliably while the server is running.
+
+### `surface-spheroid`: terrain without a DEM
+
+This diagnostic driver creates terrain at zero height on the reference-frame 
+ellipsoid. A geoid grid can displace that surface.
+
+- `textureLayerId` (default `0`): texture layer number written to the mesh.
+- `geoidGrid` (optional): geoid-grid file name.
+- The shared terrain settings are accepted.
+
+`heightFunction` has no visible effect on this driver because its source
+height is always zero.
+
+Independently of any operator resource, mapproxy auto-registers one
+`surface-spheroid` instance in the `.system` group for every reference frame
+in the server registry (id `<referenceFrame>/.system/surface-spheroid`),
+covering the whole reference frame from its root LOD. These require no
+configuration and act as baseline ellipsoid terrain for the built-in
+introspection browser. `tms-raster-patchwork` is registered the same way.
+
+
+## Vector and model layers (`geodata`)
+
+Geodata resources serve vector features or a 3D model through
+`freelayer.json`. They provide `cartolina-freelayer` data sources for
+cartolina-js [map styles][map-styles].
+
+These fields are shared by the drivers below:
+
+- `format` (default `geodataJson`): output format. `geodataJson` is the
+  supported value.
+- `formatConfig.resolution` (default `4096`): the coordinate quantization
+  grid, a 3D analogue of the MVT `extent`. All three feature coordinates are
+  snapped to a `resolution`-step grid across the geodata bounding box. A larger
+  value keeps more precision but may increase output size.
+- `styleUrl` (optional): default style URL. A value beginning with `file:`
+  loads a local file and serves it as `style.json`. A relative local path is
+  resolved below `[resource-backend] root`.
+- `displaySize` (required): nominal display size in pixels. The client uses
+  it to estimate on-screen tile size and drive tree traversal (LOD selection).
+  See [LOD selection][lod-selection] for the detailed treatment.
+- `options` (optional): value copied into `freelayer.json`.
+
+### `geodata-vector-tiled`: tiled vector input
+
+Use `geodata-vector-tiled` to provide `labels` and `lines` layers to a
+cartolina-js [map style][map-styles].
+
+The data comse from a tiled vector source: an MVT service, an MBTiles archive, 
+or another source whose tile grid matches a spatial division node of the target 
+reference frame. A typical pairing is a service following the 
+[OpenMapTiles schema][openmaptiles] served in the `melown2015` reference frame.
+
+Because the source is tiled, every reference-frame entry needs a `lodRange`
+and `tileRange` — the object form shown under [Tile coverage](#tile-coverage),
+not the bare-ID list that single-file resources use.
+
+For a web service, set `dataset` to a URL template. For MBTiles, append a tile
+template to the archive path:
+
+```json
+"dataset": "vectors.mbtiles/{loclod}-{locx}-{locy}"
+```
+
+- `dataset` (required): source URL template or MBTiles tile template.
+- `demDataset` (required): DEM used to obtain heights.
+- `geoidGrid` (optional): geoid grid for that DEM.
+- `layers` (optional): array of source layer names to include.
+- `mode` (default `auto`): `never` preserves every source Z coordinate;
+  `always` replaces every source Z coordinate with a DEM height; and `auto`
+  uses a DEM height for 2D coordinates while preserving 3D coordinates.
+- `maxSourceLod` (optional): when the requested LOD is finer than the source,
+  reuse tiles from this source LOD.
+- `schema` (default `maptiler`): input tile-coordinate convention.
+- `clipLayers` (optional): source layers to clip at tile boundaries.
+- `enhance` (optional): join attributes from a SQLite database, as described
+  below.
+- The shared geodata fields are accepted.
+
+`enhance` joins source features to rows of a SQLite table. Each member is named
+for a source layer and provides:
+
+- `key`: source feature attribute holding the lookup value;
+- `db`: SQLite file, relative to `[resource-backend] root`; and
+- `table`: SQLite table name.
+
+The table must have an `id` column. When a feature's `key` value matches a
+row's `id`, that row's remaining columns are added to the feature. For example,
+to attach a population figure to each `place` feature, keyed on the feature id:
+
+```json
+"enhance": {
+    "place": {
+        "db": "places.sqlite",
+        "table": "place_population",
+        "key": "#fid"
+    }
 }
 ```
 
-NB: in the above template only `{rf}` (reference frame identifier) is expected to work. It can be used to use in terse
-resource definition in multiple reference frames.
+### `geodata-vector`: one vector file
 
-Height function is a function that takes the original height value and modifies it. Currently, the only supported
-height function is `superelevation`.
+This driver converts a single vector dataset, such as GeoJSON or a shapefile,
+into one geodata file, assigning DEM heights to 2D coordinates. Like
+`geodata-vector-tiled`, it backs `labels` and `lines` layers in a cartolina-js
+[map style][map-styles]. It accepts the same vector fields — including
+`enhance` — except the tiled-only `maxSourceLod`, `schema`, and `clipLayers`,
+and is served as one file, so its `referenceFrames` are listed by ID only (no
+`lodRange`/`tileRange`). `dataset` is a single vector file.
 
-```javascript
-heightFunction = {
-    String function; // must be "superelevation"
-    Array<double>[2] heightRange; // source mapping range
-    Array<souble>[2] scaleRange; // destination mapping range
+### `geodata-mesh`: an OBJ model
+
+This driver converts a triangular OBJ model into one geodata file. Texture
+coordinates and vertex normals are ignored.
+
+- `dataset` (required): OBJ path.
+- `srs` (required): coordinate system of the OBJ vertices.
+- `center` (required): `[x, y, z]` origin in the source coordinate system.
+  Use `[0, 0, 0]` when no offset is needed.
+- The shared geodata fields are accepted.
+
+Faces that share a material become one output feature named after that
+material. A model without materials becomes one feature named `mesh`.
+
+### Cesium terrain
+
+When a reference frame has a TMS extension, surface resources also serve
+Cesium quantized-mesh tiles as `{lod}-{x}-{y}.terrain` and metadata as
+`layer.json`.
+
+The tile-coordinate transform is configured on the reference-frame TMS
+extension, not on the resource. This interface targets `tms-global-geodetic`,
+an equirectangular reference frame not suitable for general Cartolina terrain;
+a deployment that relies on it warrants its own documentation.
+
+
+## Resource browser and test viewers
+
+The browser is an optional operator interface. It adds HTML directory pages
+and simple viewers for inspecting configured resources. It does not enable or
+disable tile delivery.
+
+### Enabling the browser
+
+The browser is disabled by default. Enable it in the main mapproxy
+configuration:
+
+```ini
+[http]
+enableBrowser = true
+```
+
+Restart mapproxy after changing this setting. The mapproxy base URL then
+provides directory pages for reference frames, resource types, groups, and
+individual resources.
+
+When the setting is absent or `false`, these HTML pages and their support
+files return 404. Tile data and machine-readable files such as
+`boundlayer.json`, `freelayer.json`, and `mapConfig.json` remain available.
+
+The available resource viewers are:
+
+- TMS resources: a 2D raster viewer at the resource URL and `index.html`.
+- Surface resources: a 3D terrain viewer at `index.html`, with its generated
+  Cartolina style at `style.json`.
+- Geodata resources: a 3D vector or model viewer at the resource URL and
+  `index.html`.
+- `surface-meta` resources do not provide their own viewer.
+
+### Configuring a surface viewer
+
+The surface definition's optional `introspection` object configures the
+initial contents of its 3D test viewer. It does not enable the browser.
+
+The object may contain:
+
+- `position`: initial VTS camera position;
+- `browserOptions`: initial Cartolina-js runtime options; and
+- `tms`: one raster layer or an array of raster layers to place on the
+  terrain.
+
+A `tms` entry can name another local resource:
+
+```json
+"introspection": {
+    "tms": { "group": "imagery", "id": "aerial" }
 }
 ```
 
-Superelevation maps height from `heightRange` to scale in `scaleRange` and outputs original height scaled by computed scale.
-The `heightRange[0]` must be lower than `heightRange[1]` and heights below `heightRange[0]` and above `heightRange[1]` are clipped.
+It can also name a remote `boundlayer.json` URL:
 
-### Driver: surface-spheroid
-
-This driver generates meshed surface for reference frame's spheroid. If geoid grid is provided the resulting body
-is in fact a geoid.
-
-```javascript
-definition = {
-    // see common surface driver configuration options above
+```json
+"introspection": {
+    "tms": {
+        "id": "external-aerial",
+        "url": "https://example.test/boundlayer.json"
+    }
 }
 ```
 
-☛ Since `superelevation` has no effect here (all heights are 0) the heightFunction is not implemented yet.
+The older `introspection.geodata` field is ignored by the current viewer and
+produces a warning. Do not use it in new resources.
 
-### Driver: surface-dem
+### Configuring a geodata viewer
 
-This driver generates a meshed surface from the supplied GDAL raster DEM/DSM/DTM dataset.
+The geodata definition's optional `introspection` object may contain:
 
-Since GDAL raster formats are unable to safely store vertical SRS component it cannot tell whether data are
-in ellipsoidal or orthometric verical datum. Therefore by default the heights are treated as if they are above the ellipsoid
-(i.e. ellipsoidal vertical datum). By providing a `geoidGrid` configuration option we can specify geoid grid
-for the orthormetric vertical datum, i.e. to tell that the heights store in the GDAL dataset are relative to given geoid.
+- `surface`: local terrain resource on which to display the geodata;
+- `position`: initial VTS camera position; and
+- `browserOptions`: initial Cartolina-js runtime options.
 
-Please be aware that due to such limitations the GDAL dataset's vertical system must be compatible with reference frame's
-vertical system to use geoid support. I.e. either they share the same ellipsoid or the input data are in some
-local system that approximates the geoid at given place. One working example is data in Krovak's projection that can
-be reinterpreted as heights above WGS84+EGM96 without any significant error.
-
-All `surface-dem` input datasets are registered in internal map od available DEM's under its `group-id` identifier
-and can be referenced from various `geodata`resources for 2D features heightcofing. Optionially, input dataset can
-be registered in this map under an alias. See more in the `geodata` resources documentation. 
-
-```javascript
-definition = {
-    // see common surface driver configuration options above
-    
-    String dataset                    // path to complex dataset
-    Optional String mask              // optional mask, generated by mapproxy-rf-mask tool
-    Optional String heightcodingAlias // dataset is registered under given alias
-}
-```
-
-### Driver: surface-meta
-
-This driver is a special kind of beast. It combines existing surface with TMS to produce internally textured surface.
-It doesn't generate any content on its own but forward all requests to existing surface and TMS resources.
-These drivers must exist in the system.
-
-Resource's credits are combined with surface's and tms's credits.
-
-Caveats/TODO:
-
-* This driver does not support any introspection. If introspection is instroduced in the future it would lack the boundlayer 
-specification (TMS) because this driver already produces its own imagery.
-
-* Also, this driver does not support any other common surface configuration.
-
-* So far, during runtime, this driver doesn't watch for changes in the underlying surface/TMS and keeps the old driver
-instance alive while the original resource has been reconfigured and is being served by new driver instance. Restart mapproxy
-if this becomes a problem.
-
-```javascript
-definition = {
-    ResourceId surface                // Resource ID od underlying surface resource
-    ResourceId tms                    // Resource ID od underlying tms resource
-}
-```
-
-## Geodata drivers
-
-Geodata drivers generate vector geographic data in the form of VTS free layer.
-
-### Introspection interface
-
-The introspection interface (i.e. the built-in browser) is identical to surface drivers, sans the terrain provider-related stuff.
-
-### Common geodata configuration
-
-```javascript
-definition = {
-    Optional Any options           // Freelayer options
-}
-```
-
-Freelayer options are passed as-is to the `freelayer.conf`.
-
-### Driver: geodata-vector
-
-Generates monolithic free layer (`geodata` type) from an OGR-supported dataset (GeoJSON, shapefile, ...).
-Purely 2D data are converted to full 3D data using process called heithgcoding: each 2D coordinate is extented
-by height read from the accompanying DEM/DTM/DSM GDAL dataset.
-
-Heightcoding DEM is in the same format a the dataset expected by `surface-dem` driver although only its `/dem`
-part is used. This DEM can be accompanied with its geoid grid in the same way as `surface-dem` is.
-
-By default all layers from the source dataset are served. Optionally, layer subset can be configured by providing list
-of layer names. Note that for purposes of [geodata styling](https://github.com/Melown/vts-browser-js/wiki/VTS-Geodata-Format#geo-layer-styles-structure), layers are referred to as [#group](https://github.com/Melown/vts-browser-js/wiki/VTS-Geodata-Format#filters)s.
-
-Since there are not tiles generated by this generator the tile and lod ranges are ignored. To make resource
-configuration more readable we can omit them completely and use array of reference frame IDs for `referenceFrame`.
 For example:
-```javascript
-{
-    ...
-    referenceFrames = [ "melown2015", "earth-qsc" ],
-    ...
-```
 
-
-The Z-coordinate of all points from the original dataset undergoes heightcoding operation.
-
-```javascript
-HeightcodingMode: Enum {
-    never  // keep original Z coordinate from source dataset
-    always // always replace Z coordinate from source dataset with height from DEM
-    auto   // use height from DEM only for 2D points, keep Z coordinate in 3D points
+```json
+"introspection": {
+    "surface": { "group": "terrain", "id": "dem" }
 }
 ```
 
-```javascript
-definition = {
-    String dataset                 // path to OGR dataset
-    String demDataset              // path to complex dem dataset
-    Optional String geoidGrid      // name of Proj.4's geoid grid file (e.g. `egm96_15.gtx`)
-    Optional Array<String> layers  // list of layer names
-    Optional String format         // output file format, so far only "geodataJson" is supported (default)
-    Optional Object formatConfig   // format-specific configuration, see below
-    Optional String styleUrl       // URL to default geodata style
-    Int displaySize                // Nominal size of tile in pixels.
-    HeightcodingMode mode          // heightcoding mode (defaults to auto).
-    Optional Object enhance        // Per-layer OGR dataset enhancement.
-    Optional Object heightFunction // Height manipulation function. Same as for the surface drivers.
-    Optional Object introspection  // Extended configuration for mapConfig.json served by mapproxy
-}
-```
-
-`styleUrl` handling is as follows:
- * if there is no `styleUrl` element present mapproxy serves its built-in default style via `style.json` file under resources URL;
- * or if `styleUrl` element is present and starts with `file:` prefix then contents of this file (either absolute or relative to dataset directory) are server via the same `style.json` file (NB: this is not a file URI);
- * otherwise, the URL from `styleUrl` element is reported in the `freelayer.json` as is
- 
-Available format configurations:
-
-* For `geodataJson`:
-```javascript
-formatConfig = {
-    Int resolution // number of samples the bounding box is divided to, defaults to 4096
-}
-```
-
-Layer enhancement allows supplying additional data to features from sqlite database. Configuration:
-
-```javascript
-enhance = {
-   Object ? = {      // layer name
-       String key    // name of afeature attribute used as a key to database
-       String db     // path to a sqlite database file, relative to dataset directory
-       String table  // name of source table inside the sqlite database
-   }
-}
-```
-
-When generator encounteres layer with matching name it tries to get a row from `<db>.<table>` with column `id` (hardcoded name) equal to the value of the attribute `key` for each feature. If matching row is found all other columns are added as attributes to the output.
-
-
-Height function support is not implemented yet.
-
-Introspection can be used to serve mapConfig where geodata are show with some surface which in turn can have its own
-introspection configuration.
-
-```javascript
-
-introspection = {
-    Optional ResourceId surface    // optional surface mapping
-    Optional Object browserOptions // browser options passed to mapConfig.json
-}
-```
-
-Browser options override any browser options from associated surface.
-
-### Driver: geodata-vector-tiled
-
-Generates tiled geodata (`geodata-tiles` type) from pre-tiled data like MVT web service or `.mbtiles` archive. Input tiling must match reference frame's space division, at least in one of its nodes. For example, OSM tiles in pseudomerc projection can be used in `webmerc-projected` and `webmerc-unprojected` reference frames and in the `pseudomerc` subtree in in `melown2015` reference frame.
-
-Configuration is the same as for `geodata-vector` driver but input interpretation is different: option `definition.dataset` is:
- * for web services: a URL template that is expanded (see above) for each requested tile before opening and processing.
- * for MBTiles: a path to `.mbtiles` archive with appended template for tiles: `path/to/myvectors.mbtiles/{loclod}-{locx}-{locy}`
-Also, per-reference-frame tiling information is mandatory.
-
-Geodata's metatiles are generated purely from heightcoding GDAL dataset.
-
-Extra parameters available in this driver:
-
-```javascript
-definition += {
-    Optional Int maxSourceLod // Maximum available LOD in the source data. Detailed LODs
-                              // will be generated from coarser tiles at maxSourceLod.
-                              // LOD is in local subtree.
-    Optional Array<String> clipLayers // list of layers that are clipped to tile extents (in spatial division SRS)
-}
-```
-
-### Driver: geodata-mesh
-
-Generates monolithic free layer (`geodata` type) from an OBJ file. Only triangular meshes are supported. Texture and normal
-vertices are ignored.
-
-```javascript
-definition = {
-    String dataset                 // path to OBJ file
-    SRS srs                        // source spatial reference system of vertices in OBJ file
-    Optional bool adjustVertical   // Z coordinates are vertically adjusted if true; defaults to false.
-    Optional Point3 center         // coordinate of mesh center in source SRS; defaults to [0, 0, 0].
-    Optional String format         // output file format, so far only "geodataJson" is supported (default)
-    Optional Object formatConfig   // format-specific configuration
-    Optional String styleUrl       // URL to default geodata style
-    Int displaySize                // nominal size of tile in pixels.
-    Optional Object introspection  // extended configuration for mapConfig.json served by mapproxy
-    Optional Object options        // generic options, passed to client
-}
-```
-
-Dataset is a path to valid OBJ mesh file. To allow smaller values in coordinates mesh is first shifted to `center` before 
-processing.
-
-Values of`srs` and `adjustVertical` fully describe source mesh spatial reference system.
-
-All other options are the same as used `geodata-vector` driver.
-
-Generated geodata file contains single layer `mesh` with one or more features. Each feature contains all faces that share the 
-same material, feature ID is set to name of the material. If there is no material used in the input file then all faces are
-put in single feature with ID `mesh`.
+The geodata definition's `styleUrl` selects the vector style used by the
+viewer and published in `freelayer.json`.

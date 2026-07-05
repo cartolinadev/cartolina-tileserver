@@ -51,24 +51,24 @@ worked with the old vts-mapproxy should still work with `cartolina-tileserver`.
 
 ## Documentation
 
-Original documentation for `cartolina-tileserver` starts at the
-[documentation index](docs/index.md). It is still incomplete, so you can rely
-on the [legacy documentation of vts-mapproxy](https://web.archive.org/web/20230206094802/https://vts-geospatial.org/reference/server/mapproxy/index.html#mapproxy), which is still
-relevant as a fallback.
-
-If you want to use the new generators you need to figure things out [from the source code](mapproxy/src/mapproxy/definition/tms.hpp) at the 
-moment. But if you have the technological dexterity to run the tile server
-you should not find that very difficult.
+The `cartolina-tileserver` documentation starts at the
+[documentation index](docs/index.md). The archived
+[vts-mapproxy documentation][legacy-mapproxy-docs] remains useful for
+inherited behavior.
 
 You don't really need to do anything to use the TIN normal maps generated from
 DEMs: these are generated from the default configuration including the metadata
 that allow `cartolina-js` to find them.
 
-Authoritative resource-definition documentation is available in a separate [document](docs/resources.md).
+The [resource-definition reference](docs/resources.md) documents the
+established resource drivers, including `tms-gdaldem`, `tms-normalmap`, and
+`tms-specularmap`.
 
-A growing body of tileserver-relevant, authoritative documentation — operator
-guides for the command-line tools, the metanode store and tiling workflows — is
-maintained in the wiki of the sister project [`cartolina-js`](https://github.com/cartolinadev/cartolina-js/tree/main/docs/wiki).
+Project-wide architecture, RFCs, and frontend/backend interface documentation
+live in the sister project [`cartolina-js`][cartolina-js-wiki].
+
+[legacy-mapproxy-docs]: https://web.archive.org/web/20230206094802/https://vts-geospatial.org/reference/server/mapproxy/index.html#mapproxy
+[cartolina-js-wiki]: https://github.com/cartolinadev/cartolina-js/tree/main/docs/wiki
 
 
 ## Install
