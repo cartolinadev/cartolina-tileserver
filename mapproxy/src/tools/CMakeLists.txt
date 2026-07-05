@@ -43,18 +43,6 @@ buildsys_binary(mapproxy-tidiff)
 set_target_version(mapproxy-tidiff ${vts-mapproxy_VERSION})
 
 # ----------------------------------------------------------------------
-# RFC 7 texelSize calibration spike
-set(mapproxy-texel-spike_SOURCES
-  texelspike.cpp
-  )
-
-add_executable(mapproxy-texel-spike ${mapproxy-texel-spike_SOURCES})
-target_link_libraries(mapproxy-texel-spike ${MODULE_LIBRARIES})
-target_compile_definitions(mapproxy-texel-spike PRIVATE ${MODULE_DEFINITIONS})
-buildsys_binary(mapproxy-texel-spike)
-set_target_version(mapproxy-texel-spike ${vts-mapproxy_VERSION})
-
-# ----------------------------------------------------------------------
 # vts::TileIndex and mapped::TileIndex query tool
 set(mapproxy-querymmti_SOURCES
   querymmti.cpp
@@ -71,5 +59,5 @@ set_target_version(mapproxy-querymmti ${vts-mapproxy_VERSION})
 # ----------------------------------------------------------------------
 
 # RFC 7 operator/diagnostic tools
-install(TARGETS mapproxy-mnstore mapproxy-tidiff mapproxy-texel-spike
+install(TARGETS mapproxy-mnstore mapproxy-tidiff
   RUNTIME DESTINATION bin COMPONENT tools)

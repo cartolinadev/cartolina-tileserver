@@ -28,7 +28,6 @@ Metanode-store diagnostics (RFC 7):
 |---|---|
 | `mapproxy-mnstore` | metanode store inspection: `info`, `dump`, `check`, and format `selftest`; see `--help` |
 | `mapproxy-tidiff` | compares two complete VTS tile indexes per tile, with optional LOD and spatial filters; the tiling parity gate |
-| `mapproxy-texel-spike` | harvests per-node texelSize/height/planar-analytic CSV from v6 metatile files (plus child-metatile ids for tree crawling); built for the RFC 7 phase-1 calibration, useful for re-calibration on other bodies and for serve-parity value diffs |
 
 Semantic/mesh utilities:
 

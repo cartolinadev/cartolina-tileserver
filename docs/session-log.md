@@ -8,6 +8,16 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-05 — removed the completed texel-size calibration spike
+
+Removed `mapproxy-texel-spike` from the source tree and tools package. It was
+the one-off RFC 7 phase-1 harvester used to calibrate the metanode store's
+texel-size heuristic. That calibration completed across 848,000 nodes and its
+durable conclusions live in the RFC and serving implementation; the tool had
+no operator workflow, test coverage, or in-tree consumer, and its sampling
+logic had already diverged from the serving path. A future recalibration
+should validate the then-current implementation directly.
+
 ## 2026-07-05 — removed the absolute bottom-LOD override
 
 Removed `--bottomLod` from `mapproxy-tiling` and
