@@ -363,8 +363,8 @@ public:
     static const int lattice = 64; // (lattice + 1)^2 SrsFactors samples
 
     GsdGrid(const geo::SrsDefinition &srsDef, const math::Extents2 &extents
-            , double gsd, int extraLods)
-        : extents_(extents), extraLods_(extraLods)
+            , double gsd)
+        : extents_(extents)
         , log2scale_((lattice + 1) * (lattice + 1)
                      , std::numeric_limits<double>::quiet_NaN())
     {
@@ -401,8 +401,8 @@ public:
     /** Local floor depth (relative to the node root) at an SDS point. */
     int floorDepth(const math::Point2 &p) const {
         const auto bestLod(depthConst_ - 0.5 * log2scaleAt(p));
-        if (!(bestLod > 0.0)) { return extraLods_; }
-        return int(std::ceil(bestLod)) + extraLods_;
+        if (!(bestLod > 0.0)) { return 0; }
+        return int(std::ceil(bestLod));
     }
 
     /** Maximum floor depth over the sampled lattice: the deepest LOD
@@ -414,10 +414,10 @@ public:
         for (const auto v : log2scale_) {
             if (!std::isnan(v)) { minLog2 = std::min(minLog2, v); }
         }
-        if (!std::isfinite(minLog2)) { return extraLods_; }
+        if (!std::isfinite(minLog2)) { return 0; }
         const auto bestLod(depthConst_ - 0.5 * minLog2);
-        if (!(bestLod > 0.0)) { return extraLods_; }
-        return int(std::ceil(bestLod)) + extraLods_;
+        if (!(bestLod > 0.0)) { return 0; }
+        return int(std::ceil(bestLod));
     }
 
 private:
@@ -469,7 +469,6 @@ private:
     }
 
     math::Extents2 extents_;
-    int extraLods_;
     double depthConst_ = 0.0;
     bool anyValid_ = false;
     std::vector<double> log2scale_;
@@ -769,8 +768,7 @@ void UnifiedPass::prepareNode
     auto leafLod(lodRange_.max);
     if (config_.pruneGsd) {
         pruneGrid = std::make_shared<GsdGrid>
-            (srsDefinition, node.extents, *config_.pruneGsd
-             , config_.pruneExtraLods);
+            (srsDefinition, node.extents, *config_.pruneGsd);
         if (pruneGrid->anyValid()) {
             const auto capped(node.id.lod + pruneGrid->maxFloorDepth());
             leafLod = std::min<vts::Lod>(leafLod, capped);

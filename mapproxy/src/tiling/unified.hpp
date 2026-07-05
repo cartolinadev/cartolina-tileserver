@@ -98,13 +98,6 @@ struct UnifiedConfig {
      */
     boost::optional<double> pruneGsd;
 
-    /** Extra local LODs added to the per-tile prune floor depth (a
-     *  resolution margin, and the room an operator --bottomLod override
-     *  needs below the measured floor). 0 = prune exactly at
-     *  source-native resolution.
-     */
-    int pruneExtraLods = 0;
-
     /** Coverage (mask-only) mode for non-DEM datasets (imagery): runs
      *  only the two mask filter passes to derive existence and
      *  watertightness, skips the elevation passes and the metanode

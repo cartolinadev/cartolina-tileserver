@@ -8,6 +8,15 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-05 — removed the absolute bottom-LOD override
+
+Removed `--bottomLod` from `mapproxy-tiling` and
+`mapproxy-setup-resource`. Target GSD is now the sole resolution policy:
+it determines the analyzed maximum LOD and, for DEMs, the spatial prune
+floor. The associated internal `pruneExtraLods` offset is gone. Operators
+who need terrain deeper than its native sampling for fine draped imagery
+set a finer `--gsd` directly.
+
 ## 2026-07-05 — unified tiling: watertightness ends at the rf partition, not the cell
 
 In reference frames with a manually partitioned root (melown2015-style),

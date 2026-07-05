@@ -96,7 +96,6 @@ struct Config {
     bool transparent;
     std::vector<std::string> attributions;
     vs::CreditIds credits;
-    boost::optional<vts::Lod> bottomLod;
 
     vrtwo::Color::optional background;
 
@@ -222,10 +221,6 @@ void SetupResource::configuration(po::options_description &cmdline
          , "Attribution text, one per attribution. "
          "At least one attribution/credits is required.")
 
-        ("bottomLod", po::value<vts::Lod>()
-         , "Desired bottom LOD. The actual bottom might be deeper in "
-         "case of more detail dataset.")
-
         ("gsd", po::value<double>()
          , "Target floor GSD (ground sampling distance / pixel size) in METERS "
          "the resource is meant to be used at; this sets the highest LOD "
@@ -313,10 +308,6 @@ void SetupResource::configure(const po::variables_map &vars)
             .as<geo::GeoDataset::Resampling>();
     }
 
-    if (vars.count("bottomLod")) {
-        config_.bottomLod = vars["bottomLod"].as<vts::Lod>();
-    }
-
     if (vars.count("background")) {
         config_.background = vars["background"].as<vrtwo::Color>();
     }
@@ -342,7 +333,6 @@ void SetupResource::configure(const po::variables_map &vars)
         << "\nmapproxy.ctrl = " << config_.mapproxyCtrl
         << "\nreferenceFrame = " << resourceId_.referenceFrame
         << "\ncredits.firstNumericId = " << config_.autoCreditId
-        << "\nbottomLod = " << config_.bottomLod
         << "\nbackground = " << config_.background
         << "\ndataset = " << dataset_
         << "\nlinkDataset = " << linkDataset_
@@ -909,13 +899,6 @@ int SetupResource::run()
             << "overlap of " << *cm.xOverlap << " pixels.";
     }
 
-    // apply bottom LOD (remember the measured floor so the prune can be
-    // extended by an operator-forced deeper floor)
-    const auto measuredMaxLod(cm.lodRange.max);
-    if (config.bottomLod) {
-        cm.lodRange.max = std::max(cm.lodRange.max, *config.bottomLod);
-    }
-
     // 4) allocate attributions
     const auto credits(attributions2credits(config));
 
@@ -997,12 +980,6 @@ int SetupResource::run()
         unifiedConfig.skipPartial = config.skipPartial;
         if (config.prune) {
             unifiedConfig.pruneGsd = cm.targetGsd;
-            // an operator floor deeper than the measured one must survive
-            // the prune: grant that many extra local LODs
-            if (cm.lodRange.max > measuredMaxLod) {
-                unifiedConfig.pruneExtraLods
-                    = cm.lodRange.max - measuredMaxLod;
-            }
         }
 
         auto result

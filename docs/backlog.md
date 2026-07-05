@@ -412,9 +412,8 @@ Shipped as `--prune` in the merged `mapproxy-tiling` (and
 once its subdivision passes the source resolution at its own location,
 computed per tile from the node's projection area scale (the calipers
 depth formula per tile centre) rather than the `truescale` bit sketched
-below. `k` is implemented as `--pruneExtraLods` (0 = terrain-native),
-set from an operator `--bottomLod` overshoot; a per-resource
-resolution-margin knob for draped imagery remains the open refinement.
+below. The target GSD is the complete resolution policy; operators can
+set it finer than the DEM to leave room for draped imagery.
 Changing the prune policy means re-running `mapproxy-tiling --apply`.
 The leaf-triangle-budget caveat below still applies.
 
@@ -438,12 +437,10 @@ absolute. Draped imagery is textured per surface tile id, so an
 orthophoto finer than the DEM needs surface tiles past terrain-native
 resolution — but the imagery's tiles live on the same pseudomerc grid
 and stretch by the same sec(lat) factor, so the needed margin is a
-latitude-invariant number of extra lods. One per-resource parameter
-covers it: prune children where `truescale >= 2^k`, with `k` the
-configured resolution-margin lods (k = 0 prunes at terrain-native;
-today's behavior is k = infinity). The surface still cannot know what
-will be draped on it, so `k` is an operator setting in the resource
-definition.
+latitude-invariant resolution ratio. The operator expresses that ratio
+through the target GSD: for imagery twice as fine as the DEM, use a
+target GSD half the DEM's native GSD. The surface cannot infer what will
+be draped on it, so setup must supply that target.
 
 Remaining caveat: **leaf triangle budget** — mesh simplification
 budgets faces per tile, so a native-resolution leaf stretched over a

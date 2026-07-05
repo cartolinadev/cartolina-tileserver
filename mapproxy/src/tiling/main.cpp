@@ -221,7 +221,6 @@ private:
 
     calipers::Config calipersConfig_;
     double vectorResolution_ = 1.0;
-    boost::optional<vts::Lod> bottomLod_;
 
     bool apply_ = false;
     bool prune_ = true;
@@ -268,10 +267,6 @@ void Tiling::configuration(po::options_description &cmdline
         ("vectorResolution", po::value(&vectorResolution_)
          ->default_value(vectorResolution_)
          , "Assumed resolution (meters per pixel) of a vector dataset.")
-        ("bottomLod", po::value<vts::Lod>()
-         , "Floor LOD override: widen the analyzed lod range to at least "
-         "this LOD (the prune floor is extended by the same amount).")
-
         ("apply", "Actually run the tiling and publish the artifacts. "
          "Without it the tool performs a dry survey only (measurement "
          "report and resource-config template).")
@@ -374,10 +369,6 @@ void Tiling::configure(const po::variables_map &vars)
         }
         calipersConfig_.gsd = gsd;
     }
-    if (vars.count("bottomLod")) {
-        bottomLod_ = vars["bottomLod"].as<vts::Lod>();
-    }
-
     apply_ = vars.count("apply");
     noexcept_ = vars.count("noexcept");
 
@@ -550,17 +541,6 @@ int Tiling::apply(const vr::ReferenceFrame &rf, calipers::Measurement m)
         unifiedConfig_.pruneGsd = boost::none;
     } else if (prune_) {
         unifiedConfig_.pruneGsd = m.targetGsd;
-        // an operator floor deeper than the measured one must not be
-        // pruned away: give the prune that many extra local LODs
-        vts::Lod measuredMaxLod(0);
-        for (const auto &node : m.nodes) {
-            measuredMaxLod
-                = std::max(measuredMaxLod, node.ranges.lodRange().max);
-        }
-        if (m.lodRange.max > measuredMaxLod) {
-            unifiedConfig_.pruneExtraLods
-                = m.lodRange.max - measuredMaxLod;
-        }
     }
     unifiedConfig_.skipPartial = skipPartial_;
 
@@ -626,10 +606,6 @@ int Tiling::runImpl()
             << "Dataset does not fall inside any node of reference frame <"
             << referenceFrame_ << ">; nothing to tile.";
         return EXIT_FAILURE;
-    }
-
-    if (bottomLod_) {
-        m.lodRange.max = std::max(m.lodRange.max, *bottomLod_);
     }
 
     report(m, rf, std::cout);
