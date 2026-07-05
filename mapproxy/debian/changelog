@@ -1,3 +1,19 @@
+cartolina-tileserver (1.122metanodestore) testing; urgency=medium
+
+  * fix config parsing regression introduced by startup banner support
+    (daemon failed to start)
+  * geodata-vector-tiled: prefix remote MVT dataset URLs with mvt: so the
+    MVT driver fetches tiles directly, fixing a cross-tile race in GDAL's
+    generic HTTP driver that could serve a tile built from a neighboring
+    tile's data, an empty tile, or a 500, cached by CDNs; bump
+    GeneratorRevision so clients regenerate cached geodata
+  * unified pass: watertight inference honors reference-frame
+    partitioning, so a missing child wholly outside a partitioned root's
+    valid area is no longer flagged as a coverage hole; mapproxy-mnstore
+    check relaxes the prune sibling rule the same way
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Sun, 05 Jul 2026 08:36:54 +0200
+
 cartolina-tileserver (1.121metanodestore) testing; urgency=medium
 
   * mapproxy-tiling --apply: log to a log/ subdirectory of the dataset by
