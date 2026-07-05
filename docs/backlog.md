@@ -11,7 +11,27 @@ The metanode-store and unified-tiling work in this backlog is specified by
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
-## REDESIGN: retire the in-tree MVT driver in favor of GDAL's upstream driver
+## Leaf-lod watertightness is blind to the rf partition boundary
+
+**Opened:** 2026-07-05
+**Status:** open, low priority — only bites datasets whose footprint stops
+exactly at a partition boundary (e.g. a polar dataset cut at the ±85.05°
+circle); global and interior datasets are unaffected.
+
+The 2026-07-05 fix made the unified pass's parent watertight inference
+honor the reference frame's partitioning; the *leaf* test still does not.
+A leaf tile's watertightness is `maskMin == 255` from the
+one-pixel-per-tile min filter over the full physical cell, so an
+rf-partial leaf whose data ends exactly at the constraint reads
+non-watertight even though it is complete over its valid area — and that
+veto then propagates up through the (now correct) parent inference. The
+legacy per-tile walk got this right by comparing the warped mask against
+the node's constraint coverage (`NodeInfo::checkMask`); the unified pass
+has no sub-tile mask resolution to do the same. Fixing it means either a
+constraint-aware leaf pass for rf-partial cells (a second, clipped mask
+warp, or per-cell `checkMask` on the boundary strip) or accepting the
+conservatism. Do not bolt validity into the world tile ranges instead —
+existence and watertightness are different questions.
 
 **Opened:** 2026-07-04
 **Status:** deferred, low priority — the cross-tile staging race it

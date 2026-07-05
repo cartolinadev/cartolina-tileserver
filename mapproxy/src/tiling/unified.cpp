@@ -63,6 +63,9 @@
 #include "vts-libs/vts/tileop.hpp"
 #include "vts-libs/vts/io.hpp"
 #include "vts-libs/vts/csconvertor.hpp"
+#include "vts-libs/vts/nodeinfo.hpp"
+
+#include "mapproxy/support/metatile.hpp"
 
 #include "unified.hpp"
 
@@ -965,6 +968,25 @@ void UnifiedPass::reduceNode(NodeJob &job)
                                   : std::string()) << ".";
     }
 
+    // A missing child completely outside the subtree's constrained
+    // (partitioned) area is no coverage hole: delivery never serves
+    // tiles there and clips the parent mesh to the constraint. Only
+    // missing children that intersect the valid area veto the
+    // parent's watertightness. Children are derived from the subtree
+    // root info to share its constraint sampler (a from-scratch
+    // NodeInfo builds a PROJ pipeline per construction).
+    const vts::NodeInfo subtreeRoot
+        (referenceFrame_
+         , vts::TileId(node.id.lod, node.id.x, node.id.y));
+    const auto missingChildVetoes
+        ([&](vts::Lod lod, vts::TileRange::value_type x
+             , vts::TileRange::value_type y) -> bool
+    {
+        if (!subtreeRoot.partial()) { return true; }
+        return deriveNodeInfo(subtreeRoot, vts::TileId(lod, x, y))
+            .valid();
+    });
+
     // bottom-up 2x2 min/max mip loop with interleaved emission
     emit(node, srsDef, leafLod, leaf, pruneGrid);
 
@@ -995,13 +1017,17 @@ void UnifiedPass::reduceNode(NodeJob &job)
                             || (cy < child.range.ll(1))
                             || (cy > child.range.ur(1)))
                         {
-                            watertight = false;
+                            if (missingChildVetoes(lod + 1, cx, cy)) {
+                                watertight = false;
+                            }
                             continue;
                         }
                         const auto col(cx - child.range.ll(0));
                         const auto row(cy - child.range.ll(1));
                         if (!child.exists.at<std::uint8_t>(row, col)) {
-                            watertight = false;
+                            if (missingChildVetoes(lod + 1, cx, cy)) {
+                                watertight = false;
+                            }
                             continue;
                         }
 

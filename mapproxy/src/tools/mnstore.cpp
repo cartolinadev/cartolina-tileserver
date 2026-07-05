@@ -37,13 +37,17 @@
 #include "utility/buildsys.hpp"
 #include "service/cmdline.hpp"
 
+#include "vts-libs/registry/po.hpp"
 #include "vts-libs/vts/io.hpp"
 #include "vts-libs/vts/tileop.hpp"
 #include "vts-libs/vts/tileindex.hpp"
+#include "vts-libs/vts/nodeinfo.hpp"
 #include "mapproxy/support/mnstore.hpp"
+#include "mapproxy/support/metatile.hpp"
 
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
+namespace vr = vtslibs::registry;
 
 namespace {
 
@@ -98,6 +102,8 @@ void MnStoreTool::configuration(po::options_description &cmdline
          , "Limit dump to a single page (page root tile id).")
         ;
 
+    vr::registryConfiguration(cmdline, vr::defaultPath());
+
     pd.add("command", 1)
         .add("store", 1)
         .add("tileIndex", 1);
@@ -107,6 +113,8 @@ void MnStoreTool::configuration(po::options_description &cmdline
 
 void MnStoreTool::configure(const po::variables_map &vars)
 {
+    vr::registryConfigure(vars);
+
     if (vars.count("page")) {
         pageId_ = vars["page"].as<vts::TileId>();
     }
@@ -125,8 +133,9 @@ bool MnStoreTool::help(std::ostream &out, const std::string &what) const
                 "check verifies the store against its paired flag tile\n"
                 "index: pairing digest, payload present exactly for the\n"
                 "tiles the index reaches, parent ranges containing child\n"
-                "ranges, and pruned sibling sets removed together. It does\n"
-                "not support forceWatertight stores.\n"
+                "ranges, and pruned sibling sets removed together (children\n"
+                "outside the reference frame's constrained area are exempt).\n"
+                "It does not support forceWatertight stores.\n"
                 "\n");
         return true;
     }
@@ -311,9 +320,40 @@ int MnStoreTool::check()
         }
     }
 
+    // Children completely outside the reference frame's constrained
+    // (partitioned) area are never emitted, so the sibling rule
+    // applies to the remaining children only. Root infos are cached
+    // so derived children share the constraint sampler (a
+    // from-scratch NodeInfo builds a PROJ pipeline per construction).
+    const auto *referenceFrame
+        (vr::system.referenceFrames(header.referenceFrame
+                                    , std::nothrow));
+    if (!referenceFrame) {
+        std::cout << "reference frame \"" << header.referenceFrame
+                  << "\" not found in registry; treating every missing "
+                  "child of a watertight tile as a sibling-rule "
+                  "violation\n";
+    }
+    std::map<vts::TileId, vts::NodeInfo> rootInfos;
+    const auto childValid([&](const vts::TileId &childId) -> bool
+    {
+        if (!referenceFrame) { return true; }
+        const auto *root
+            (referenceFrame->findSubtreeRoot(childId, std::nothrow));
+        if (!root) { return false; }
+        auto iroot(rootInfos.find(root->id));
+        if (iroot == rootInfos.end()) {
+            iroot = rootInfos.emplace
+                (root->id, vts::NodeInfo(*referenceFrame, root->id))
+                .first;
+        }
+        return deriveNodeInfo(iroot->second, childId).valid();
+    });
+
     /* Index side: every flagged tile must carry payload, and a
-     * watertight tile keeps all four children or none (the prune
-     * sibling rule; unsupported for forceWatertight stores).
+     * watertight tile keeps all its reference-frame-valid children or
+     * none (the prune sibling rule; unsupported for forceWatertight
+     * stores).
      */
     typedef vts::TileIndex::Flag TiFlag;
     for (auto lod(lodRange.min); lod <= lodRange.max; ++lod) {
@@ -346,9 +386,18 @@ int MnStoreTool::check()
                     for (const auto &childId : vts::children(tileId)) {
                         if (payload(childId)) ++count;
                     }
-                    if (count && (count != 4))
+                    if (!count || (count == 4)) continue;
+
+                    // partial set: a violation unless every missing
+                    // child is invalid in the reference frame
+                    for (const auto &childId : vts::children(tileId)) {
+
+                        if (payload(childId) || !childValid(childId))
+                            continue;
                         report(tileId, "watertight tile keeps a partial "
                                "child set");
+                        break;
+                    }
                 }
             }
         });

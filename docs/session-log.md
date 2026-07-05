@@ -8,6 +8,46 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-05 — unified tiling: watertightness ends at the rf partition, not the cell
+
+In reference frames with a manually partitioned root (melown2015-style),
+division nodes physically overlap and the root's partitioning ranges decide
+ownership: delivery never advertises tiles wholly outside a subtree's
+constraint and clips partial tiles' meshes to it (metatile assembly gates
+child flags on `NodeInfo` validity; mesh generation intersects the node's
+constraint coverage mask). The mechanism is now documented in the
+cartolina-js wiki (`reference-frames.md`, "How partitioning ranges act at
+run time").
+
+The unified pass ignored this: it inferred a parent's watertight flag from
+the complete 2×2 child test, so parents along a partition boundary — fully
+covered over their valid area — were flagged non-watertight on every lod
+above the finest (in melown2015, rings around the ±85.05° circle in both
+polar caps), costing clients needless fallback rendering, mask
+materialization and framebuffer switches. The legacy per-tile walk had the
+correct semantics all along via `NodeInfo::checkMask` ("fully covered by
+dataset and by reference frame definition"); the mip reduction lost them.
+
+The 2×2 reduction now exempts a missing child whose cell is invalid in the
+reference frame (derived from the subtree root's node info, sharing its
+constraint sampler); a missing child intersecting the valid area vetoes as
+before, so dataset edges are unaffected. `mapproxy-mnstore check`'s prune
+sibling rule is relaxed accordingly — children outside the reference
+frame's valid area are exempt; the tool now loads the registry (the frame
+id comes from the store header) and falls back to the strict rule with a
+warning when the frame is unknown.
+
+Verified: a mid-latitude sample re-tiles to its deployed pair bit-for-bit
+(dataset-edge behavior unchanged); a synthetic wide-latitude dataset gains
+watertight flags exactly on the polar-cap partition-boundary rings, leaf
+lods and the pseudomerc side untouched; pair checks are clean with and
+without `--skipPartial`. The client-side counterpart (pre-v6 watertight
+inference from children) received the same exemption in cartolina-js.
+
+Known remaining conservatism, recorded in the backlog: a *leaf* tile that
+is rf-partial stays non-watertight when the dataset stops exactly at the
+constraint, because the leaf test is mask-only at one pixel per tile.
+
 ## 2026-07-04 — geodata-vector-tiled: fix cross-tile data race on remote MVT
 
 Fixed the long-standing race in which a `geodata-vector-tiled` resource
