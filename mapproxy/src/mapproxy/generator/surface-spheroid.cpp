@@ -97,7 +97,7 @@ SurfaceSpheroid::SurfaceSpheroid(const Params &params)
     , definition_(resource().definition<Definition>())
 {
     // TODO: do not load existing file if system and something changed
-    if (loadFiles(definition_)) {
+    if (loadFiles()) {
         makeReady();
     }
 
@@ -106,8 +106,6 @@ SurfaceSpheroid::SurfaceSpheroid(const Params &params)
 void SurfaceSpheroid::prepare_impl(Arsenal&)
 {
     LOG(info2) << "Preparing <" << id() << ">.";
-
-    checkPackaging();
 
     const auto &r(resource());
 

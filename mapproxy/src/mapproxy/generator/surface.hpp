@@ -53,23 +53,8 @@ public:
 
 protected:
     boost::filesystem::path filePath(vts::File fileType) const;
-    bool updateProperties(const Definition &def);
-    bool loadFiles(const Definition &definition);
-
-    /** Effective metatile packaging (RFC 7): surface override or the
-     *  reference-frame value.
-     */
-    unsigned int effectiveMetaBinaryOrder() const;
-
-    /** Effective metatile packaging (RFC 7): surface override or 1.
-     */
-    unsigned int effectiveMetaDepth() const;
-
-    /** Throws if the effective packaging cannot be served by the v6
-     *  single-LOD-block serializer/current clients.
-     */
-    void checkPackaging() const;
-
+    bool updateProperties();
+    bool loadFiles();
 
     vts::ExtraTileSetProperties extraProperties(const Definition &def)
         const;

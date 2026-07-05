@@ -8,6 +8,49 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-05 — removed dead surface-definition options
+
+Removed four surface `definition` options that the audit found inert:
+`nominalTexelSize`, `mergeBottomLod`, `metaBinaryOrder`, and `metaDepth`.
+Each was a serve-time resource-definition input for a value that is either
+informational or fixed at tiling time, with no functional effect in
+mapproxy: `nominalTexelSize` fed only the `vts` info printout;
+`mergeBottomLod` is read only by the vts-libs tileset-merge path mapproxy
+never invokes; the metatile packaging pair could only ever be `(5, 1)` (the
+serve/emit path addresses metatiles by the reference-frame order directly,
+and `checkPackaging()` threw on anything else). Effective packaging is now
+the reference-frame order and depth 1. The store header remains the
+packaging authority; when shallow-subtree delivery makes per-surface
+packaging real it belongs there, not in the resource definition — see the
+RFC 7 addendum (2026-07-05) and the backlog entry. `resources.md` updated.
+
+## 2026-07-05 — refreshed the resource-definition reference
+
+Audited the established sections of [resources.md](resources.md) against the
+resource parsers and documented the three production TMS generators added
+after the upstream project ended: `tms-gdaldem`, `tms-normalmap`, and
+`tms-specularmap`. Corrected field requirements, defaults, accepted values,
+current introspection behavior, metatile packaging options, and supported
+mesh inputs. Obsolete and experimental registered drivers remain
+undocumented by design.
+
+Rewrote the page as an operator guide organized around concrete tasks and
+complete configuration examples. It defines project terms when they first
+appear, explains what each setting changes, gives actionable defaults, and
+keeps implementation libraries and source-tree paths out of the prose. The
+review also corrected `tms-normalmap`: it derives bump detail from image
+brightness, while surface normal maps are the ones derived from DEM geometry.
+Removed the obsolete `ppx` and `ppy` URL expansions from the operator guide;
+their retained compatibility implementation is marked obsolete and pending
+deletion.
+Removed the legacy `tms-bing` driver from the operator guide and marked its
+retained compatibility definition obsolete and pending deletion.
+
+Removed the stale warnings from the documentation index and README that
+called the resource reference old or incomplete. The README now points users
+to the local tileserver documentation for operator material and to the shared
+cartolina-js wiki for project-wide documentation.
+
 ## 2026-07-05 — adopted metanode stores never fall back to warp
 
 Removed the per-request warp fallback from the metanode-store serve path.

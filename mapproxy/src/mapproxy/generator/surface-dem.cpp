@@ -120,7 +120,7 @@ SurfaceDem::SurfaceDem(const Params &params)
 
     bool success = true;
 
-    if (loadFiles(definition_)) {
+    if (loadFiles()) {
 
         // remember dem in registry
         addToRegistry();
@@ -186,8 +186,6 @@ void SurfaceDem::prepare_impl(Arsenal&)
 {
     LOG(info2) << "Preparing <" << id() << ">.";
 
-    checkPackaging();
-
     const auto &r(resource());
 
     // try to open dataset
@@ -223,15 +221,9 @@ void SurfaceDem::prepare_impl(Arsenal&)
     properties_.tileRange = r.tileRange;
     properties_.revision = r.revision;
 
-    // advertise effective metatile packaging (RFC 7)
-    properties_.metaBinaryOrder = effectiveMetaBinaryOrder();
-    properties_.metaDepth = effectiveMetaDepth();
-
-    // optional tuning properties
-    properties_.nominalTexelSize = definition_.nominalTexelSize;
-    if (definition_.mergeBottomLod) {
-        properties_.mergeBottomLod = *definition_.mergeBottomLod;
-    }
+    // advertise the reference-frame metatile packaging (RFC 7); metaDepth 1
+    properties_.metaBinaryOrder = referenceFrame().metaBinaryOrder;
+    properties_.metaDepth = 1;
 
     {
         const auto tilingPath
@@ -292,8 +284,8 @@ void SurfaceDem::openMetanodeStore()
     storeConfig.datasetDir = datasetDir;
     storeConfig.root = root();
     storeConfig.referenceFrame = referenceFrameId();
-    storeConfig.metaBinaryOrder = effectiveMetaBinaryOrder();
-    storeConfig.metaDepth = effectiveMetaDepth();
+    storeConfig.metaBinaryOrder = referenceFrame().metaBinaryOrder;
+    storeConfig.metaDepth = 1;
     storeConfig.geoidGrid = definition_.dem.geoidGrid;
     storeConfig.heightFunction = heightFunctionJson(definition_.heightFunction);
     storeConfig.hasMask = bool(definition_.mask);

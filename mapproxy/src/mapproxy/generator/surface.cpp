@@ -243,7 +243,7 @@ bool hasAtmosphere(const vr::ReferenceFrame &referenceFrame)
 
 } // namespace
 
-bool SurfaceBase::loadFiles(const Definition &definition)
+bool SurfaceBase::loadFiles()
 {
     if (changeEnforced()) {
         LOG(info1) << "Generator for <" << id() << "> not ready.";
@@ -257,7 +257,7 @@ bool SurfaceBase::loadFiles(const Definition &definition)
         if (fs::exists(indexPath) && fs::exists(propertiesPath)) {
             // both paths exist -> ok
             properties_ = vts::tileset::loadConfig(propertiesPath);
-            if (updateProperties(definition)) {
+            if (updateProperties()) {
                 // something changed in properties, update
                 vts::tileset::saveConfig(filePath(vts::File::config)
                                          , properties_);
@@ -290,58 +290,9 @@ bool SurfaceBase::loadFiles(const Definition &definition)
     return false;
 }
 
-unsigned int SurfaceBase::effectiveMetaBinaryOrder() const
-{
-    if (definition_.metaBinaryOrder) {
-        return *definition_.metaBinaryOrder;
-    }
-    return referenceFrame().metaBinaryOrder;
-}
-
-unsigned int SurfaceBase::effectiveMetaDepth() const
-{
-    return definition_.metaDepth ? *definition_.metaDepth : 1;
-}
-
-void SurfaceBase::checkPackaging() const
-{
-    /* The v6 metatile serializer and current cartolina-js clients can
-     * only consume single-LOD metatile blocks addressed by the
-     * reference-frame binary order. Non-default packaging is valid
-     * store/tooling input but cannot be served yet (deferred to the
-     * client shallow-subtree milestone).
-     */
-    if ((effectiveMetaBinaryOrder() != referenceFrame().metaBinaryOrder)
-        || (effectiveMetaDepth() != 1))
-    {
-        LOGTHROW(err2, std::runtime_error)
-            << "Generator for <" << id() << ">: effective metatile "
-            "packaging (metaBinaryOrder=" << effectiveMetaBinaryOrder()
-            << ", metaDepth=" << effectiveMetaDepth()
-            << ") is not servable by the v6 metatile path; current "
-            "clients require reference-frame order ("
-            << referenceFrame().metaBinaryOrder << ") and depth 1.";
-    }
-}
-
-bool SurfaceBase::updateProperties(const Definition &def)
+bool SurfaceBase::updateProperties()
 {
     bool changed(false);
-
-    if (properties_.nominalTexelSize != def.nominalTexelSize) {
-        properties_.nominalTexelSize = def.nominalTexelSize;
-        changed = true;
-    }
-
-    if (def.mergeBottomLod) {
-        if (properties_.mergeBottomLod != *def.mergeBottomLod) {
-            properties_.mergeBottomLod = *def.mergeBottomLod;
-            changed = true;
-        }
-    } else if (properties_.mergeBottomLod) {
-        properties_.mergeBottomLod = 0;
-        changed = true;
-    }
 
     // update revision if changed
     if (resource().revision > properties_.revision) {
@@ -349,10 +300,10 @@ bool SurfaceBase::updateProperties(const Definition &def)
         changed = true;
     }
 
-    // advertise effective metatile packaging (RFC 7)
+    // advertise the reference-frame metatile packaging (RFC 7); metaDepth 1
     {
         const boost::optional<unsigned int>
-            mbo(effectiveMetaBinaryOrder()), md(effectiveMetaDepth());
+            mbo(referenceFrame().metaBinaryOrder), md(1);
         if ((properties_.metaBinaryOrder != mbo)
             || (properties_.metaDepth != md))
         {

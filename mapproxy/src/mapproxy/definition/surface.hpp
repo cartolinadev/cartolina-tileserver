@@ -58,16 +58,6 @@ public:
         bool operator!=(const Introspection &other) const;
     };
 
-    boost::optional<double> nominalTexelSize;
-    boost::optional<vts::Lod> mergeBottomLod;
-
-    /** Metatile packaging overrides (RFC 7). Effective values default
-     *  to the reference-frame metaBinaryOrder and depth 1; current
-     *  cartolina-js clients require effective (5, 1).
-     */
-    boost::optional<unsigned int> metaBinaryOrder;
-    boost::optional<unsigned int> metaDepth;
-
     HeightFunction::pointer heightFunction;
     Introspection introspection;
 

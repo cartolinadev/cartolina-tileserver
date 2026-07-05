@@ -11,6 +11,22 @@ The metanode-store and unified-tiling work in this backlog is specified by
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## Per-surface metatile packaging, if ever needed, goes in the store header
+
+**Opened:** 2026-07-05
+**Status:** open, no action until the client shallow-subtree milestone —
+non-default packaging is unservable today, so there is nothing to configure.
+
+The surface-definition `metaBinaryOrder`/`metaDepth` options were removed
+(2026-07-05): they were a serve-time resource-definition input for a value
+fixed at tiling time, could only ever be `(5, 1)` or throw, and reached
+nothing but the mapConfig advertisement. See the RFC 7 addendum
+(2026-07-05). When shallow-subtree delivery makes per-surface packaging
+real, drive it from a **tiling-time parameter stamped into the store
+header** — the header already carries `metaBinaryOrder`/`metaDepth` — with
+serving and mapConfig sourced from that header. Do not resurrect the
+resource-definition field: the store, not the config, is the authority.
+
 ## Leaf-lod watertightness is blind to the rf partition boundary
 
 **Opened:** 2026-07-05
@@ -272,18 +288,16 @@ paired artifact and fails visibly; keeping legacy pyramids cannot hide it.
 ## DOCS: audit and update `resources.md`
 
 **Opened:** 2026-06-30
-**Status:** open
+**Status:** resolved 2026-07-05
 
 [resources.md](resources.md) is an older reference and may lag the current
 resource parsers, registered drivers, defaults, and runtime behavior. Review
 the complete document against the implementation and make it accurate.
 
-The audit includes, but is not limited to:
+The audit includes:
 
-- adding every missing TMS, surface, and geodata generator, including newer
-  generators such as `tms-gdaldem`, `tms-normalmap`,
-  `tms-specularmap`, `tms-windyty`, `tms-raster-solid`,
-  `geodata-semantic`, and `geodata-semantic-tiled`;
+- documenting the production TMS generators added since 2023:
+  `tms-gdaldem`, `tms-normalmap`, and `tms-specularmap`;
 - verifying every documented field, type, default, constraint, and accepted
   JSON shape against the parser and definition type;
 - correcting stale descriptions and examples;
@@ -296,13 +310,13 @@ Treat the implementation under `mapproxy/src/mapproxy/definition/` as the
 source of truth. Preserve useful operational guidance and links while fixing
 technical inaccuracies.
 
-Exit criteria:
+Resolution:
 
-- every registered resource driver is documented;
-- every existing section has been checked against the current code;
-- examples use accepted configuration shapes; and
-- the document no longer carries a general warning that it is incomplete or
-  outdated.
+The established resource sections were checked against their parsers and the
+three post-2023 TMS generators were added. Obsolete and experimental drivers
+were deliberately not promoted into the reference. Examples now use accepted
+configuration shapes, and the document no longer carries a general warning
+that it is incomplete or outdated.
 
 ## TOOLS: background-color keying does not reach the VRTWO mask band
 

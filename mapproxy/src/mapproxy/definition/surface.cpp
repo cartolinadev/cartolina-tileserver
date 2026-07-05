@@ -71,26 +71,6 @@ bool Surface::Introspection::operator!=(const Introspection &other) const
 
 void Surface::parse(const Json::Value &value)
 {
-    if (value.isMember("nominalTexelSize")) {
-        nominalTexelSize = boost::in_place();
-        Json::get(*nominalTexelSize, value, "nominalTexelSize");
-    }
-
-    if (value.isMember("mergeBottomLod")) {
-        mergeBottomLod = boost::in_place();
-        Json::get(*mergeBottomLod, value, "mergeBottomLod");
-    }
-
-    if (value.isMember("metaBinaryOrder")) {
-        metaBinaryOrder = boost::in_place();
-        Json::get(*metaBinaryOrder, value, "metaBinaryOrder");
-    }
-
-    if (value.isMember("metaDepth")) {
-        metaDepth = boost::in_place();
-        Json::get(*metaDepth, value, "metaDepth");
-    }
-
     heightFunction = HeightFunction::parse(value, "heightFunction");
 
     if (value.isMember("introspection")) {
@@ -121,21 +101,6 @@ void Surface::parse(const Json::Value &value)
 
 void Surface::build(Json::Value &value) const
 {
-    if (nominalTexelSize) {
-        value["nominalTexelSize"] = *nominalTexelSize;
-    }
-    if (mergeBottomLod) {
-        value["mergeBottomLod"] = *mergeBottomLod;
-    }
-
-    if (metaBinaryOrder) {
-        value["metaBinaryOrder"] = *metaBinaryOrder;
-    }
-
-    if (metaDepth) {
-        value["metaDepth"] = *metaDepth;
-    }
-
     if (heightFunction) {
         auto &tmp(value["heightFunction"] = Json::objectValue);
         heightFunction->build(tmp);
@@ -165,24 +130,8 @@ Changed Surface::changed_impl(const DefinitionBase &o)
     const auto &other(o.as<Surface>());
 
     // manually set data can be changed safely
-    if (nominalTexelSize != other.nominalTexelSize) {
-        return Changed::safely;
-    }
-
-    if (mergeBottomLod != other.mergeBottomLod) {
-        return Changed::safely;
-    }
-
     if (introspection != other.introspection) {
         return Changed::safely;
-    }
-
-    if ((metaBinaryOrder != other.metaBinaryOrder)
-        || (metaDepth != other.metaDepth))
-    {
-        // metatile packaging changes metatile addressing and the
-        // metanode store page layout
-        return Changed::yes;
     }
 
     if (HeightFunction::changed(heightFunction, other.heightFunction)) {
