@@ -8,6 +8,27 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-05 — adopted metanode stores never fall back to warp
+
+Removed the per-request warp fallback from the metanode-store serve path.
+Store selection now happens once at resource preparation: a valid paired
+store is the sole metatile source; without an adopted store, legacy warp is
+available only when both `dem.min` and `dem.max` exist. Surface DEM and both
+tiled-geodata generators follow the same rule.
+
+`metatileFromStore` now returns a metatile or raises an error. Missing pages
+and missing payload for any index-reachable node are broken-pair errors,
+including structural ancestors with no own flags; legacy pyramids cannot
+hide them. Derived-field conversion errors also propagate instead of
+switching implementations mid-request.
+
+The original coarse-metatile reproduction now returns 200 from the store:
+the height-sidecar scrub already guaranteed payload for every index-reachable
+node, while the served-index intersection removes synthetic range entries
+absent from the paired flag index. A RelWithDebInfo build passed, the paired
+store checker reported no violations, and representative store-backed
+surface and tiled-geodata metatiles served without warp-fallback messages.
+
 ## 2026-07-05 — removed the completed texel-size calibration spike
 
 Removed `mapproxy-texel-spike` from the source tree and tools package. It was

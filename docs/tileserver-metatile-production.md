@@ -229,14 +229,15 @@ model stays CDN-compatible: metatile URLs are keyed on tile ID and
 stable, so CDN caches absorb repeats; the difference from the old model
 is that cold origin misses are now cheap.
 
-**Warp fallback.** A store-backed resource that cannot serve a metatile
-from the store (or whose store fails validation) falls back to the
-serve-time warp **only when the legacy `dem.min`/`dem.max` pyramids are
-present**; the fallback is logged as `W3`. A normal-only resource with
-no valid store cannot warp — its min/max inputs do not exist — so it
-fails to prepare instead of silently degrading. Masked resources always
-use the warp path. Tiled-geodata freelayers that read the same DEM
-share the validated store path. See
+**Warp fallback.** Store selection happens at resource preparation. A store
+that fails validation is rejected, and the resource uses the serve-time warp
+only when the legacy `dem.min`/`dem.max` pyramids are present. A normal-only
+resource with no valid store cannot warp, so it fails to prepare instead of
+silently degrading. Once a store is adopted, every metatile request uses it;
+a missing page or reachable-node payload is a broken paired artifact and
+fails visibly rather than falling back. Masked resources always use the warp
+path. Tiled-geodata freelayers that read the same DEM share the validated
+store path. See
 [metanode-store-operations.md](metanode-store-operations.md) for the
 full validation matrix and failure-mode log messages.
 

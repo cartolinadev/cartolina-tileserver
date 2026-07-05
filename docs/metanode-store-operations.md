@@ -320,9 +320,10 @@ Generator for <rf/group/id>: serving metatiles from metanode store
     "...metanodes.<rf>" (N pages, pairing <digest>).
 ```
 
-Request representative metatiles and check the log for `W3` messages
-containing `falling back to warp`. There must be none. Tiled-geodata
-freelayer metatiles that use this DEM must pass the same check.
+Request representative metatiles and check the log for warnings rejecting
+the store and for metanode-store page/payload errors. There must be none.
+Tiled-geodata freelayer metatiles that use this DEM must pass the same check.
+Once the adoption message is logged, requests never divert to the warp path.
 
 ### 5. Establish store-only rollback
 
@@ -391,7 +392,8 @@ caches metatile responses. Re-tiling can change the served metatile bytes.
   Rerun tiling with the current function.
 - `configured max LOD ... exceeds...`: the artifacts do not cover the
   configured range. Rerun tiling for the complete range.
-- `falling back to warp`: the store could not serve the metatile. Resolve
-  the cause before removing `dem.min` and `dem.max`.
+- `no page ... with reachable tiles` or `no payload for reachable tile`:
+  the paired artifacts violate the height-sidecar contract. Restore or
+  regenerate the pair; requests never fall back to the legacy pyramids.
 
 [rfc-7]: https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/rfc-metanode-store.md

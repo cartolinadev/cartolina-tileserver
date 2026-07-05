@@ -419,20 +419,13 @@ void GeodataSemanticTiled::generateMetatile(Sink &sink
     }
 
     if (store_) {
-        if (auto metatile = metatileFromStore
+        auto metatile(metatileFromStore
             (fi.tileId, *store_, resource(), index_->tileIndex
-             , dem_.geoidGrid, definition_.displaySize))
-        {
-            std::ostringstream os;
-            metatile->save(os);
-            sink.content(os.str(), fi.sinkFileInfo());
-            return;
-        }
-
-        LOG(warn3)
-            << "Generator for <" << id()
-            << ">: metanode store could not serve semantic geodata "
-            "metatile " << fi.tileId << "; falling back to warp.";
+             , dem_.geoidGrid, definition_.displaySize));
+        std::ostringstream os;
+        metatile.save(os);
+        sink.content(os.str(), fi.sinkFileInfo());
+        return;
     }
 
     checkMetatileSource();
@@ -452,7 +445,7 @@ void GeodataSemanticTiled::generateMetatile(Sink &sink
 void GeodataSemanticTiled::openMetanodeStore()
 {
     store_.reset();
-    warpFallbackAvailable_ = legacyDemMetatileInputsAvailable(dem_.dataset);
+    warpFallbackAvailable_ = false;
 
     MetanodeStoreConfig storeConfig;
     storeConfig.id = id().fullId();
@@ -467,6 +460,11 @@ void GeodataSemanticTiled::openMetanodeStore()
     storeConfig.lodRange = resource().lodRange;
 
     store_ = ::openMetanodeStore(storeConfig);
+    if (!store_) {
+
+        warpFallbackAvailable_
+            = legacyDemMetatileInputsAvailable(dem_.dataset);
+    }
 }
 
 void GeodataSemanticTiled::checkMetatileSource() const

@@ -397,17 +397,9 @@ SurfaceDem::generateMetatileImpl(const vts::TileId &tileId
 {
     if (store_) {
         // RFC 7 metanode store path: no warp
-        if (auto metatile = metatileFromStore
+        return metatileFromStore
             (tileId, *store_, resource(), index_->tileIndex
-             , dem_.geoidGrid, boost::none, overrides))
-        {
-            return std::move(*metatile);
-        }
-        // store cannot serve this metatile -> warp fallback
-        LOG(warn3)
-            << "Generator for <" << id()
-            << ">: metanode store could not serve metatile "
-            << tileId << "; falling back to warp.";
+             , dem_.geoidGrid, boost::none, overrides);
     }
 
     checkMetatileSource();

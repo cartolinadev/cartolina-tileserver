@@ -225,7 +225,8 @@ envelope.
 ## CORRECTNESS (tileserver): the store serve path must not depend on warp fallback
 
 **Opened:** 2026-07-02
-**Status:** open; needed before the legacy warp path is retired.
+**Status:** resolved 2026-07-05 — an adopted store is now the sole
+metatile source; per-request warp fallback is gone.
 
 `metatileFromStore` (`generator/metatile-store.cpp`) returns `boost::none`
 — falling back to the serve-time DEM warp — whenever a tile the *served*
@@ -252,6 +253,21 @@ range in the store), or stop `prepareTileIndex` from marking a tile real
 where the paired store has no node, or let `metatileFromStore` synthesise a
 navtile-only metanode without a store read. Whichever: the invariant is that
 a valid store + index pair serves every metatile in range with no warp.
+
+Resolution: the later height-sidecar semantic scrub made the store carry
+payload for every node the paired flag index reaches, including structural
+ancestors. `prepareTileIndex` intersects its synthetic range with that flag
+index, so synthetic-only mesh/navtile entries do not survive into delivery;
+the original coarse-metatile reproduction now serves from the store. The
+remaining unsafe mechanism was the optional return from `metatileFromStore`:
+a missing page, missing reachable-node payload, or derived-field exception
+could still divert an already adopted store to the legacy warp path.
+
+`metatileFromStore` now returns a metatile or raises an error. Surface DEM
+and both tiled-geodata callers return its result directly. Legacy warp is
+selected only at resource preparation, when no valid store is adopted and
+both `dem.min` and `dem.max` are available. A missing payload is a broken
+paired artifact and fails visibly; keeping legacy pyramids cannot hide it.
 
 ## DOCS: audit and update `resources.md`
 

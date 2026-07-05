@@ -132,9 +132,8 @@ vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
                               , const MetatileOverrides &overrides = {});
 
 /** Builds a metatile from the metanode store (RFC 7) without a DEM
- *  warp. Returns boost::none when the store cannot serve this
- *  metatile (page or node payload missing for tiles the flag index
- *  claims) so the caller can fall back to the warp path.
+ *  warp. A missing page or node payload is an invalid paired store
+ *  and flag index and raises an error.
  *
  * @param tileId metatile id
  * @param store opened metanode store
@@ -143,9 +142,9 @@ vts::MetaTile metatileFromDem(const vts::TileId &tileId, Sink &sink
  * @param geoidGrid SDS vertical datum geoid grid (resource setting)
  * @param displaySize optional geodata display-size override
  * @param overrides credits/texture overrides
- * @return assembled metatile or boost::none
+ * @return assembled metatile
  */
-boost::optional<vts::MetaTile>
+vts::MetaTile
 metatileFromStore(const vts::TileId &tileId
                   , const mnstore::Store &store
                   , const Resource &resource

@@ -330,7 +330,7 @@ private:
 
 } // namespace
 
-boost::optional<vts::MetaTile>
+vts::MetaTile
 metatileFromStore(const vts::TileId &tileId
                   , const mnstore::Store &store
                   , const Resource &resource
@@ -409,12 +409,6 @@ metatileFromStore(const vts::TileId &tileId
             continue;
         }
 
-        // derived-field converters and grids can fail on blocks that
-        // reach outside a projection's domain (polar caps); fail the
-        // whole metatile over to the warp path, which has its own
-        // handling
-        try {
-
         // physical converter for the planar texel; navigation-SRS
         // converter from the store's (geoid-shifted) datum for the
         // navtile height range — the warp path's own conversion
@@ -490,36 +484,30 @@ metatileFromStore(const vts::TileId &tileId
                 node.flags(ti2metaFlags(tiFlags));
                 const bool geometry(node.geometry());
                 const bool navtile(node.navtile());
+                const bool reachable(tileIndex.validSubtree(nodeId));
 
                 setChildren(block, nodeId, node);
 
-                const bool real(geometry || navtile);
-
-                if (real && !havePage) {
-
-                    LOG(warn3)
+                if (reachable && !havePage) {
+                    LOGTHROW(err2, std::runtime_error)
                         << "Metanode store has no page for metatile "
-                        << tileId << " with real tiles; falling "
-                        "back to warp.";
-                    return boost::none;
+                        << tileId << " with reachable tiles.";
                 }
 
-                // A real tile must have stored payload. A zero-flag
-                // node with payload is a structural node (a partial
-                // tile suppressed by skipPartial): its stored height
-                // range bounds every descendant mesh, so it is
-                // served too — client-side culling needs it to decide
-                // the descent toward that geometry. A node with
-                // neither is empty space: flags and children only.
+                // Every reachable tile has stored payload. A zero-flag
+                // reachable node is a structural node (a partial tile
+                // suppressed by skipPartial): its stored height range
+                // bounds every descendant mesh, so it is served too —
+                // client-side culling needs it to decide the descent
+                // toward that geometry. A node with neither is empty
+                // space: flags and children only.
                 const auto data(havePage ? page.node(nodeId)
                                 : mnstore::NodeData());
-                if (real && !data) {
-
-                    LOG(warn3)
+                if (reachable && !data) {
+                    LOGTHROW(err2, std::runtime_error)
                         << "Metanode store page " << page.root()
-                        << " has no payload for real tile "
-                        << nodeId << "; falling back to warp.";
-                    return boost::none;
+                        << " has no payload for reachable tile "
+                        << nodeId << ".";
                 }
 
                 if (data) {
@@ -599,13 +587,6 @@ metatileFromStore(const vts::TileId &tileId
             }
         }
 
-        } catch (const std::exception &e) {
-            LOG(warn3)
-                << "Metanode store: cannot derive block fields for "
-                << tileId << ": <" << e.what()
-                << ">; falling back to warp.";
-            return boost::none;
-        }
     }
 
     return metatile;
