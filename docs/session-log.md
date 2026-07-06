@@ -8,6 +8,19 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-06 — fixed 500 on a reference frame's root metatile
+
+The store only holds tiles from bisection nodes. The serve path was
+querying it for manual and barren nodes too — the melown2015 root is a
+manual node — finding nothing, and (now that the warp fallback is gone)
+returning 500. Requesting metatile 0-0-0 was enough to trigger it.
+
+Fix: only query the store for bisection nodes; serve the rest (manual
+and barren) with flags and children, which is all those nodes carry.
+Verified the melown2015 root metatile now comes out byte-for-byte the
+same as the old warp path produced, with stored terrain metatiles
+unchanged. See the RFC 7 addendum (2026-07-06).
+
 ## 2026-07-05 — removed dead surface-definition options
 
 Removed four surface `definition` options that the audit found inert:

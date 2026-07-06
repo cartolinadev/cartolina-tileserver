@@ -75,6 +75,20 @@ inline MetaFlag::value_type ti2metaFlags(TiFlag::value_type ti)
     return meta;
 }
 
+/** The store domain: mapproxy-tiling warps exactly the
+ *  bisection-rooted division subtrees (unified.cpp schedules nothing
+ *  else), so payload exists for reachable tiles there and nowhere
+ *  else. A block outside the domain — a barren tree-completion node
+ *  or a manual division node such as the melown2015 eqc root — is
+ *  productive reference-frame topology but carries no payload and is
+ *  served structurally: flags and children only.
+ */
+bool inStoreDomain(const MetatileBlock &block)
+{
+    return (block.commonAncestor.node().partitioning.mode
+            == vr::PartitioningMode::bisection);
+}
+
 /** Per-tile planar-texel sampling density: tile corners at deep lods
  *  where the cell is locally flat, 2x2 quads below to track
  *  projection curvature. The phase-1 spike measured even
@@ -394,8 +408,8 @@ metatileFromStore(const vts::TileId &tileId
         const math::Size2f ts(es.width / bSize.width
                               , es.height / bSize.height);
 
-        if (!block.commonAncestor.productive()) {
-            // unproductive node: flags and children only
+        if (!inStoreDomain(block)) {
+            // no payload here: flags and children only
             for (int j(0); j < bSize.height; ++j) {
                 for (int i(0); i < bSize.width; ++i) {
                     const vts::TileId nodeId
