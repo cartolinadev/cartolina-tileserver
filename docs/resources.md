@@ -1,27 +1,35 @@
 # Configuring resources
 
-A resource tells mapproxy what data to serve and how to serve it. This page
-explains the resource file from an operator's point of view.
+A resource definition tells mapproxy what data to serve and how to serve it. This page
+explains the resource configuration from an operator's point of view.
+
+The purpose of all resources is to provide building blocks for cartolina-js
+[map styles][map-styles].
 
 There are three kinds of resource:
 
-- `tms`: a raster layer, such as aerial imagery, hillshade, or a normal map;
 - `surface`: 3D terrain generated from a digital elevation model (DEM) or a
   reference ellipsoid; and
+- `tms`: a raster layer, such as aerial imagery, hillshade, or a normal map;
 - `geodata`: vector features or a 3D model.
 
-The purpose of all resources is to provide building blocks for cartolina-js
-[map styles][map-styles]: surfaces define terrain, and `tms` and `geodata` are
-used as layers.
+In cartolina-js [map styles][map-styles], surfaces define terrain, and `tms` and 
+`geodata` are used as layers.
 
-The `driver` selects how mapproxy produces that resource. For example,
+The `driver` selects how mapproxy produces a resource. For example,
 `tms-raster` serves imagery while `tms-gdaldem` derives hillshade or slope
 from a DEM.
 
-A [reference frame][reference-frames] is the named coordinate system and tile
-grid in which mapproxy serves a resource. Common examples are `melown2015` and
-`earth-qsc`. The reference frame must already exist in the registry used by
-the server.
+Resource organised data in  a way prescribed by a a [reference frame][reference-frames],
+which is cartolina's terminology for a complete manifesto decribing the spatial oranisation
+of all resources used within within a single map style and a geometric reference for their 
+interpretation.
+
+All resources used within a single map style have to share the same reference frame, which 
+must be defined in the registry used by the server. A single resource configuration, on the 
+other hand, may make the resource available for use in multiple reference frames.
+
+A common choice of reference frame for Earth-depicting maps is 'melown2015'.
 
 [reference-frames]:
   https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/reference-frames.md
@@ -31,10 +39,12 @@ the server.
   https://github.com/cartolinadev/cartolina-js/blob/main/docs/wiki/lod-selection.md
 [openmaptiles]:
   https://openmaptiles.org/schema/
+[tileserver-tools]: 
+tileserver-tools.md
 
 ## Loading resource files
 
-The main mapproxy configuration names the first resource file:
+The first resource file is named in the tileserver configuration file (/etc/vts/mapproxy/mapproxy.conf):
 
 ```ini
 [resource-backend]
@@ -60,6 +70,13 @@ allowed. It is not an error when a wildcard matches no files.
 
 ## A complete resource
 
+It is normally not necessary to write resource configuration files by hand. The 
+[tileserver tools][tileserver-tools] provide ways to produce them in the process of 
+resource preparation. The tools either write the resource configuration directly
+into the tileserver's resource configuration tree (mapproxy-setup-resource does this)
+or they produce resource definition templates which the operator edits and copies
+into the target location (this is the case with mapproxy-tiling).
+
 This example serves a prepared imagery dataset as an image layer:
 
 ```json
@@ -71,33 +88,36 @@ This example serves a prepared imagery dataset as an image layer:
     "driver": "tms-raster",
     "referenceFrames": {
         "melown2015": {
-            "lodRange": [0, 18],
+            "lodRange": [0, 10],
             "tileRange": [[0, 0], [1, 1]]
         }
     },
     "credits": [],
     "definition": {
-        "dataset": "imagery/aerial/dataset",
+        "dataset": "imagery/example/example.tif",
         "format": "jpg"
     }
 }
 ```
 
-The top-level fields mean:
+Here the top-level fields mean:
 
+- `definition`: the path to the actual geoereferenced dataset and the format of individual
+  output files.
+- `type`: the resource type, tms`, `surface`, or `geodata`.
+- `driver`: the specific production method described later on this page.
 - `group` and `id`: the resource's URL identifier. Together they must be
   unique within each reference frame and resource type.
-- `type`: `tms`, `surface`, or `geodata`.
-- `driver`: the production method described later on this page.
-- `referenceFrames`: where the resource is available and which tiles it may
-  produce.
-- `credits`: credit identifiers shown to clients. The field is required; use
+- `referenceFrames`: the [reference frames][reference-frame] where the resource is available 
+   and which tile ranges it may cover (see below)
+- `credits`: credit identifiers (data attributions) shown to clients. The field is required; use
   an empty array when no credit applies.
-- `definition`: settings understood by the selected driver.
+
+There may be other top level fields:
+
 - `comment`: optional operator note. It does not affect output.
 - `revision`: optional integer added to generated URLs. Change it when clients
   must stop using cached output.
-- `registry`: optional local registry entries, usually credits.
 - `maxAge`: optional cache lifetime overrides, in seconds. Its members are
   `config`, `support`, `registry`, and `data`.
 
@@ -119,14 +139,14 @@ and tile range for each [reference frame][reference-frames]:
 16. `tileRange` is the inclusive range of tiles at the first LOD in
 `lodRange`: `[[minimumX, minimumY], [maximumX, maximumY]]`.
 
-A vector or mesh resource served as one file does not need tile ranges. List
+Monolithic resources (resources served as one file) does not need tile ranges. List
 only the reference-frame IDs:
 
 ```json
 "referenceFrames": ["melown2015", "earth-qsc"]
 ```
 
-Mapproxy creates one addressable resource for every listed reference frame.
+Tileserver creates one addressable resource for every listed reference frame.
 
 ### Credits
 
