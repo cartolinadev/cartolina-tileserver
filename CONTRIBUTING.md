@@ -1,111 +1,110 @@
-# Contributing to VTS-Mapproxy
+# Contributing to cartolina-tileserver
 
-[Melown](http://melown.com) VTS-Mapproxy project openly welcomes
-contributions (bug reports, bug fixes, code enhancements/features, etc.).  This
-document will outline some guidelines on contributing to VTS-Mapproxy. 
-
-VTS-Mapproxy has the following modes of contribution:
-
-- GitHub Pull Requests (accepted and moderated by contributors with git write access)
-- GitHub Commit Access (granted to long-term core developers)
+`cartolina-tileserver` is a fork of — and replacement for — the discontinued
+`vts-mapproxy`. Contributions are welcome, but the project is not trying to
+preserve every legacy code path. Before starting larger work, read
+[README.md](README.md) and [AGENTS.md](AGENTS.md), and check the
+[documentation index](docs/index.md) and the shared
+[cartolina-js wiki](https://github.com/cartolinadev/cartolina-js/tree/main/docs/wiki)
+for project-wide architecture and RFCs.
 
 ## Code of Conduct
 
-Please note that this project is released with a Contributor Code of Conduct
-(see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)). By
-participating in this project you agree to abide by its terms.
+Participation in this project is covered by
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
+## Contributor Terms
 
-## Contributor License Agreement
+By submitting a contribution, you agree that:
 
-Contributors are asked to expressly agree with [Melown Contributor License Agreement (CLA)](https://gist.github.com/melown-bookkeeping/400fcb29dae1042c7b36880986d939f8).
+- the contribution may be used, modified, sublicensed, and redistributed
+  under the project license in [LICENSE](LICENSE)
+- you have the right to submit the contribution under those terms
+- the contribution is your original work, or is derived from work that you
+  have the right to submit under compatible open-source terms
+- you will identify any third-party code, data, generated output, or license
+  terms that apply to the contribution
+- to the extent permitted by law, you will defend and indemnify the project
+  maintainers from third-party claims caused by your breach of these terms
 
-The purpose of the Melown CLA is to ensure that
+These terms are an inbound-equals-outbound contribution policy. Copyright
+ownership is not assigned to the project; contributors keep ownership of
+their own contributions while granting the project the rights needed to
+release them under the project license.
 
-- Melown secures copyright and any patent rights necessary to make your code part of the project
-- your contribution does not infringe on other people's rights
+Maintainers may ask for a signed-off commit, a separate written
+certification, or clarification of source provenance before accepting a
+contribution.
 
-You agree with the CLA by
+## Contribution Scope
 
- 1. downloading a [CLA copy](https://melown.github.io/documents/melown-individual-cla-v1.pdf) and printing it,
- 2. entering your name, your legal address and current date,
- 3. signing the document,
- 4. scanning the signed document and emailing it to *community at melown.com*.
+Good contributions include:
 
-This is only required once for your contributions to [all Melown repositories](https://github.com/Melown).
+- bug reports with a reproducible resource configuration, request URL, or
+  dataset
+- fixes for current resource drivers and generators
+- focused improvements to a driver, generator, or the introspection API
+- documentation that records current behavior or non-obvious findings
 
-## Development
+Out of scope by default:
 
-### GitHub Commit Guidelines
+- restoring legacy `vts-mapproxy` behavior that this fork has deliberately
+  dropped or replaced
+- speculative abstractions for future resource types
+- broad rewrites that are not tied to a tested behavior change
 
-- enhancements and bug fixes should be identified with a GitHub issue
-- commits should be granular enough for other developers to understand the
-  nature / implications of the change(s). You might be asked to merge commits,
-  so that other developers are able to understand commit content.
-- non-trivial Git commits shall be associated with a GitHub issue.  As
-  documentation can always be improved, tickets need not be opened for improving
-  the docs
-- Git commits shall include a description of changes
-- Git commits shall include the GitHub issue number (i.e. ``#1234``) in the Git
-  commit log message
+## Development Setup
 
-### Submitting a Pull Request
+Building from source, running the dev server, and the repository's other
+conventions (submodules, tile URL layout, package builds) are covered in
+[AGENTS.md](AGENTS.md) — read it before your first change. In short:
 
-This section will guide you through steps of working on VTS-Mapproxy.  This
-section assumes you have forked VTS-Mapproxy into your own GitHub repository.
-Note that `master` is the main development branch in VTS-Mapproxy; 
-```
-  # clone the repository locally
-  git clone https://github.com/melown/vts-mapproxy.git
-  cd vts-mapproxy
-  
-  # add the main VTS-Mapproxy development branch to keep up to date with
-  # upstream changes
-  git remote add upstream https://github.com/melown/vts-mapproxy.git
-  git pull upstream master
+```bash
+git clone --recursive https://github.com/cartolinadev/cartolina-tileserver.git
+cd cartolina-tileserver
+git config core.hooksPath .githooks
 
-  # create a local branch off master
-  # The name of the branch should include the issue number if it exists
-  git branch issue-72
-  git checkout issue-72
-
-   
-  # make code/doc changes
-  git commit -am 'fix xyz (#72)'
-  git push origin issue-72
-
+cd mapproxy
+make -j<N> mapproxy   # adapt <N> to the host's available parallelism
 ```
 
-Your changes are now visible on your VTS-Mapproxy repository on GitHub.  You
-are now ready to create a pull request.  A member of the Melown core team will
-review the pull request and provide feedback / suggestions if required.  If
-changes are required, make them against the same branch and push as per above
-(all changes to the branch in the pull request apply).
+## Coding Guidelines
 
-The pull request will then be merged by the Melown team.  You can then delete
-your local branch (on GitHub), and then update
-your own repository to ensure your Melown repository is up to date with Melown
-master:
+Follow the repository instructions in [AGENTS.md](AGENTS.md) and the current
+code near the change. In short:
 
-```
-  git checkout master
-  git pull upstream master
-```
+- clean, modern C++17; the build is `-Wall -Wextra -Werror -pedantic-errors`
+  and must compile warning-free
+- 80-character hard line limit, in code and prose
+- no `else if` chains; prefer guard `if`s, early returns, or `switch`
+- keep changes in the right layer: application-specific logic belongs in
+  `mapproxy/`, not in the shared `externals/` submodules
+- prefer deleting a dead code path over keeping it "just in case"
+- match the existing brace, comment, and naming conventions in the file you
+  are editing
 
-## Documentation
+## Pull Requests
 
-**NOTE:** More detailed description of code structure is missing right now. We
-are aware of this issue and will try to improve the documentation in the future. 
+Use a branch with a short descriptive name. Include in the pull request:
 
-User documentation is being created and published at Readthedocs
-https://melown.readthedocs.io/
+- the problem or feature being addressed
+- the main implementation decisions
+- the tests or manual checks run (e.g. tile requests exercised, generators
+  covered)
+- any documentation updated (`docs/`, `AGENTS.md`, backlog, session log)
 
-For some documentation snippets, look in the [project
-wiki](https://github.com/melown/vts-mapproxy/wiki/).
+Documentation-only changes do not need a rebuild. Code changes that alter
+server behavior should update the relevant operator guide or session log in
+the same pull request.
 
-## Bugs
+## Reporting Bugs
 
-The VTS-Mapproxy [issue tracker](https://github.com/melown/vts-mapproxy/issues) is the
-place to report bugs or request enhancements. To submit a bug be sure to specify
-the VTS-Mapproxy version you are using, the appropriate component, a description of how
-to reproduce the bug.
+Report bugs on the project
+[issue tracker](https://github.com/cartolinadev/cartolina-tileserver/issues).
+Include:
+
+- the `cartolina-tileserver` version or commit
+- the resource configuration (or a minimal excerpt) that reproduces the issue
+- the request URL and HTTP status/response received
+- relevant lines from the mapproxy log
+- the expected vs. actual behavior
