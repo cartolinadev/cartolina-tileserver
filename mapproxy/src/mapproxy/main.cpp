@@ -244,6 +244,13 @@ void Daemon::configuration(po::options_description &cmdline
          , po::value(&generatorsConfig_.defaultFov)
          ->default_value(generatorsConfig_.defaultFov)->required()
          , "Camera FOV used when no introspection position is provided.")
+
+        ("introspection.systemSurfacePatchwork"
+         , po::value(&generatorsConfig_.systemSurfacePatchwork)
+         ->default_value(generatorsConfig_.systemSurfacePatchwork)
+         ->implicit_value(true)
+         , "Use the reference frame's patchwork TMS as the diffuse layer of "
+           "its auto-generated .system surface.")
         ;
 
         resourceBackendGenericConfig_.fileClassSettings.configuration(config);
@@ -330,6 +337,8 @@ void Daemon::configure(const po::variables_map &vars)
         << "]\n"
         << "\n\tresource-backend.purgeRemoved = "
         << generatorsConfig_.purgeRemovedResources << '\n'
+        << "\tintrospection.systemSurfacePatchwork = "
+        << generatorsConfig_.systemSurfacePatchwork << '\n'
         << "\thttp.externalUrl = " << generatorsConfig_.externalUrl << '\n'
         << utility::LManip([&](std::ostream &os) {
                 ResourceBackend::printConfig(os, "\t" + RBPrefixDotted

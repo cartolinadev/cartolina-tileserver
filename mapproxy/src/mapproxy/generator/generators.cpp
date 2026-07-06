@@ -247,7 +247,24 @@ void Generators::Detail::registerSystemGenerators()
             resource.generator = resourceGenerator;
             resource.comment = "autoregistered resource";
             resource.referenceFrame = &rf;
-            resource.definition(resource::definition(resourceGenerator));
+
+            // synthesize the definition this resource would otherwise load
+            // from a config file
+            auto definition(resource::definition(resourceGenerator));
+
+            // when enabled, give a system surface (which has no configured
+            // diffuse) this reference frame's auto-generated patchwork TMS
+            if (config_.systemSurfacePatchwork
+                && (resourceGenerator.type
+                    == Resource::Generator::Type::surface))
+            {
+                auto &surface(dynamic_cast<resource::Surface&>(*definition));
+                surface.introspection.tms.emplace_back
+                    (Resource::Id({}, Generator::systemGroup()
+                                  , "tms-raster-patchwork"));
+            }
+
+            resource.definition(definition);
 
             // start at first valid lod
             // lod 22 is arbitrarily deep

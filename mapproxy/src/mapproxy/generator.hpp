@@ -337,6 +337,10 @@ public:
         int resourceUpdatePeriod = 100;
         bool purgeRemovedResources = false;
 
+        /** Add the reference frame's patchwork TMS as the diffuse layer of
+         *  its auto-generated .system surface. */
+        bool systemSurfacePatchwork = false;
+
         Config() {}
     };
 
