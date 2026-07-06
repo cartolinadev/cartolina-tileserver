@@ -10,10 +10,12 @@ wiki:
 
 ## Operator guides
 
-- [Metanode store](metanode-store-operations.md) — create, migrate, verify,
-  and roll back DEM resources backed by the metanode store.
+- [Resource definitions](resources.md) — configuration for established surface,
+  tms, and geodata drivers
 - [Tileserver tools](tileserver-tools.md) — installed and in-tree command-line
   tools and their roles.
+- [Metanode store](metanode-store-operations.md) — create, migrate, verify,
+  and roll back DEM resources backed by the metanode store.
 
 ## Backend internals
 
@@ -24,9 +26,6 @@ wiki:
 
 ## Reference
 
-- [Resource definitions](resources.md) — configuration for established TMS,
-  surface, and geodata drivers, including Cartolina's DEM-derived raster
-  generators.
 - [Developer notes](../AGENTS.md) — building, running, repository conventions,
   and documentation ownership.
 - [Backlog](backlog.md) — deferred work confined to the tileserver.
