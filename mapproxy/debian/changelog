@@ -1,3 +1,20 @@
+cartolina-tileserver (1.123) testing; urgency=medium
+
+  * metanode store: remove per-request warp fallback; missing store data
+    is now a broken-pair error, fixing a 500 on manual/barren nodes (e.g.
+    the melown2015 system root)
+  * introspection: add systemSurfacePatchwork (default off) to diffuse
+    .system/surface-spheroid with the reference frame's patchwork TMS
+  * surface resource definition: drop inert nominalTexelSize,
+    mergeBottomLod, metaBinaryOrder, metaDepth options (no functional
+    effect)
+  * mapproxy-tiling, mapproxy-setup-resource: remove --bottomLod; target
+    GSD is now the sole resolution policy
+  * tools: remove mapproxy-texel-spike (RFC 7 calibration spike, work
+    complete)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Mon, 06 Jul 2026 18:13:24 +0200
+
 cartolina-tileserver (1.122metanodestore) testing; urgency=medium
 
   * fix config parsing regression introduced by startup banner support
