@@ -241,6 +241,10 @@ read-only invocations stay silent. `mapproxy-tiling`
   `SKIP_SESSION_LOG=1`. The hook also blocks common PII, secrets, and recovery
   codes in staged additions; use `SKIP_SENSITIVE=1` only for a known false
   positive.
+- A package-version-bump commit (changelog only, see "Building a package"
+  below) is exempt from both checks: it never carries a session-log entry
+  (`SKIP_SESSION_LOG=1`), and its maintainer line always re-adds the known,
+  already-published packager email (`SKIP_SENSITIVE=1` for that one line).
 - Never commit to `main`/`master` (or any integration branch) without an
   explicit request from the user. This applies to submodules too.
 - Don't create micro-commits; group a logical unit of work into one commit.

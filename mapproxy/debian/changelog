@@ -1,3 +1,12 @@
+cartolina-tileserver (1.124) testing; urgency=medium
+
+  * serve: metatiles above a resource's lod range are structural
+    (flags and children only), fixing a 500 when a resource's lod range
+    starts deeper than its reference frame's division nodes (e.g. a QSC
+    surface starting at lod 4)
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Tue, 07 Jul 2026 18:16:38 +0200
+
 cartolina-tileserver (1.123) testing; urgency=medium
 
   * metanode store: remove per-request warp fallback; missing store data
