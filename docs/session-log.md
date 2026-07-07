@@ -8,6 +8,23 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-07 — fixed 500 on metatiles above the resource lod range
+
+Same failure shape as the 07-06 root-metatile fix, one dimension over.
+The store domain is bounded not only spatially (bisection subtrees) but
+also in lod: tiling emits payload from `lodRange.min` down, so metatiles
+above the resource lod range are pure descent structure with no store
+page — yet the serve path demanded one whenever the subtree beneath was
+reachable, and returned 500. Any resource whose lod range starts deeper
+than its reference frame's division nodes hits it on the metatiles
+between the two (a QSC surface starting at lod 4 was enough).
+
+Fix: serve metatiles above `lodRange.min` structurally (flags and
+children only), the same way blocks outside the bisection domain are
+served; the missing-page integrity check still guards the stored range.
+Verified the previously failing metatile and a client-driven descent
+across the whole lod range against a dev server.
+
 ## 2026-07-06 — fixed 500 on a reference frame's root metatile
 
 The store only holds tiles from bisection nodes. The serve path was

@@ -77,9 +77,10 @@ inline MetaFlag::value_type ti2metaFlags(TiFlag::value_type ti)
 
 /** The store domain: mapproxy-tiling warps exactly the
  *  bisection-rooted division subtrees (unified.cpp schedules nothing
- *  else), so payload exists for reachable tiles there and nowhere
- *  else. A block outside the domain — a barren tree-completion node
- *  or a manual division node such as the melown2015 eqc root — is
+ *  else), so payload exists for reachable tiles there — within the
+ *  resource's lod range, checked separately — and nowhere else. A
+ *  block outside the domain — a barren tree-completion node or a
+ *  manual division node such as the melown2015 eqc root — is
  *  productive reference-frame topology but carries no payload and is
  *  served structurally: flags and children only.
  */
@@ -370,9 +371,12 @@ metatileFromStore(const vts::TileId &tileId
     const auto credits(overrides.mergedCredits(resource.credits));
 
     // the store page covering this metatile (single page: page shape
-    // equals the delivery unit)
+    // equals the delivery unit); tiling emits payload from
+    // lodRange.min down, so coarser metatiles are pure descent
+    // structure with no page to read
+    const bool storedLod(tileId.lod >= resource.lodRange.min);
     mnstore::Page page;
-    const bool havePage(store.read(tileId, page));
+    const bool havePage(storedLod && store.read(tileId, page));
 
     auto setChildren([&](const MetatileBlock &block
                          , const vts::TileId &nodeId, vts::MetaNode &node)
@@ -408,7 +412,7 @@ metatileFromStore(const vts::TileId &tileId
         const math::Size2f ts(es.width / bSize.width
                               , es.height / bSize.height);
 
-        if (!inStoreDomain(block)) {
+        if (!storedLod || !inStoreDomain(block)) {
             // no payload here: flags and children only
             for (int j(0); j < bSize.height; ++j) {
                 for (int i(0); i < bSize.width; ++i) {
