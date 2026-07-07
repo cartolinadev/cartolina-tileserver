@@ -71,6 +71,26 @@ void prepareTileIndex(vts::tileset::Index &index
                       , TileIndexExpansion expansion
                       = TileIndexExpansion::allow);
 
+/** Records into root/delivery.index.src which flag tile index the cached
+ *  delivery index was derived from (the tiling's digest) and by which
+ *  derivation (deliveryIndexDerivation at build time).
+ */
+void saveDeliveryIndexSource(const boost::filesystem::path &root
+                             , const std::string &pairing);
+
+/** True when root/delivery.index.src records the given tiling digest and
+ *  the current derivation revision; anything else means the cached
+ *  delivery index is stale and the generator must re-prepare.
+ */
+bool deliveryIndexCurrent(const boost::filesystem::path &root
+                          , const std::string &pairing);
+
+/** Identifies the derivation prepareTileIndex implements. Bump whenever
+ *  prepareTileIndex starts deriving different output from the same inputs
+ *  so that cached delivery indexes are rebuilt on reopen.
+ */
+constexpr unsigned int deliveryIndexDerivation = 2;
+
 // inlines
 
 inline void prepareTileIndex(vts::tileset::Index &index

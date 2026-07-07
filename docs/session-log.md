@@ -8,6 +8,47 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-07 — fixed 500 on metatiles at coarse lods a skipPartial tiling leaves empty
+
+The served (delivery) index is the synthetic full-tileRange bootstrap
+intersected with the paired tiling, but `TileIndex::combine` visits only
+lods the tiling has trees for. A lod with no tiles at all is skipped, and
+the bootstrap's blanket mesh flags survive into delivery there, advertising
+tiles the store never stored — the serve-path integrity check then answers
+500 ("store page has no payload for reachable tile"). `--skipPartial`
+tilings produce exactly such lods routinely: at the top of the range every
+tile is partial, so whole coarse lods carry structural store payload and no
+flags.
+
+Fix in `support/tileindex.cpp` (`prepareTileIndex`): force empty trees
+across the whole resource lod range on the loaded tiling before combining,
+so the combination is a true intersection. The served reachable set now
+matches the store checker's contract — payload present exactly for the
+tiles the index reaches — and coarse lods serve structural metanodes
+(flags and children, stored height envelopes) as skipPartial intends. This
+also closes the residual gap in the 07-02 backlog entry ("the store serve
+path must not depend on warp fallback"): the resolution there assumed the
+synthetic-index intersection was complete.
+
+The code fix alone did not repair a deployed instance: the delivery
+index is cached on disk and `delivery.index.src` recorded only the
+source tiling digest, so a reopen against an unchanged tiling kept
+serving the stale index built by the old code. The record now carries a
+derivation revision next to the digest (`deliveryIndexDerivation` in
+`support/tileindex.hpp`, bumped with this fix; writer/reader centralized
+in `saveDeliveryIndexSource`/`deliveryIndexCurrent`), and a mismatch on
+either token marks the cached index stale, triggering the existing
+re-prepare path. Old-format records mismatch by construction, so every
+store-backed resource rebuilds its delivery index once on first start
+after deploy.
+
+Verified on the dev instance against the existing store: first start
+re-prepared the store-backed resources, rebuilt the delivery indexes,
+and the failing metatile plus a full descent across the lod range serve
+200; flagged tiles are byte-identical between tiling and delivery,
+structural coarse tiles carry no flags, and store-backed earth resources
+plus tms/geodata consumers are unchanged.
+
 ## 2026-07-07 — fixed 500 on metatiles above the resource lod range
 
 Same failure shape as the 07-06 root-metatile fix, one dimension over.

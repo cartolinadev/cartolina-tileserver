@@ -27,6 +27,7 @@
 #include "metatile.hpp"
 #include "tileindex.hpp"
 
+#include <fstream>
 #include <stdexcept>
 
 typedef vts::TileIndex::Flag TiFlag;
@@ -116,6 +117,15 @@ void prepareTileIndex(vts::TileIndex &index
                 .completeDownFromBottom(TiFlag::any, TiFlag::watertight);
         }
 
+        /* combine() visits only lods the tiling has trees for; a tiling
+         * may cover no coarse lod at all (skipPartial suppresses every
+         * partial tile, and coarse lods hold nothing else). Force empty
+         * trees over the whole resource range so the combination below
+         * clears the bootstrap flags there instead of skipping the lod
+         * and leaving unbacked tiles advertised.
+         */
+        datasetTiles.makeAvailable(resource.lodRange);
+
         // TODO: unset navtile info if navtiles is true
         auto combiner([&](TiFlag::value_type o, TiFlag::value_type n)
                       -> TiFlag::value_type
@@ -171,4 +181,26 @@ void prepareTileIndex(vts::TileIndex &index
             maskTree.forEachQuad(filterByMask, MaskTree::Constraints(lod));
         }
     }
+}
+
+void saveDeliveryIndexSource(const boost::filesystem::path &root
+                             , const std::string &pairing)
+{
+    std::ofstream source((root / "delivery.index.src").string()
+                         , std::ostream::out | std::ostream::trunc);
+    source << pairing << " " << deliveryIndexDerivation << "\n";
+}
+
+bool deliveryIndexCurrent(const boost::filesystem::path &root
+                          , const std::string &pairing)
+{
+    const auto sourcePath(root / "delivery.index.src");
+    if (!boost::filesystem::exists(sourcePath)) { return false; }
+
+    std::ifstream source(sourcePath.string());
+    std::string derivedFrom;
+    unsigned int derivation(0);
+    source >> derivedFrom >> derivation;
+    return ((derivedFrom == pairing)
+            && (derivation == deliveryIndexDerivation));
 }

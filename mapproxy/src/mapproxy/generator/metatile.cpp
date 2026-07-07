@@ -34,6 +34,7 @@
 #include "geo/geodataset.hpp"
 
 #include "../support/metatile.hpp"
+#include "../support/tileindex.hpp"
 #include "../support/geo.hpp"
 #include "../support/grid.hpp"
 #include "../support/srs.hpp"
@@ -570,27 +571,21 @@ openMetanodeStore(const MetanodeStoreConfig &config, bool *needsReprepare)
                    + header.pairing + ", index: " + pairing + ").");
         }
 
-        {
-            const auto sourcePath(config.root / "delivery.index.src");
-            std::string derivedFrom;
-            if (fs::exists(sourcePath)) {
-                std::ifstream source(sourcePath.string());
-                source >> derivedFrom;
-            }
-            if (derivedFrom != pairing) {
-                /* The store is fine; only the cached delivery index is
-                 * stale (built from an older flag tile index). A
-                 * re-prepare rebuilds the delivery index from the paired
-                 * tiling and adopts the store, so signal the caller
-                 * rather than degrading to the warp path.
-                 */
-                if (needsReprepare) { *needsReprepare = true; }
-                LOG(info2)
-                    << "Generator for <" << config.id << ">: metanode store "
-                    << storePath << " is paired with a newer flag tile index "
-                    "than the cached delivery index; re-preparing to adopt it.";
-                return {};
-            }
+        if (!deliveryIndexCurrent(config.root, pairing)) {
+            /* The store is fine; only the cached delivery index is
+             * stale (built from an older flag tile index or by an
+             * older derivation). A re-prepare rebuilds the delivery
+             * index from the paired tiling and adopts the store, so
+             * signal the caller rather than degrading to the warp
+             * path.
+             */
+            if (needsReprepare) { *needsReprepare = true; }
+            LOG(info2)
+                << "Generator for <" << config.id << ">: the cached "
+                "delivery index is stale (older flag tile index or "
+                "derivation); re-preparing to adopt metanode store "
+                << storePath << ".";
+            return {};
         }
 
         LOG(info3)

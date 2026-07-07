@@ -255,12 +255,7 @@ void SurfaceDem::prepare_impl(Arsenal&)
          * digest matches this record (RFC 7), so a store can never be
          * paired with a delivery index built from another tiling.
          */
-        {
-            std::ofstream source
-                ((root() / "delivery.index.src").string()
-                 , std::ostream::out | std::ostream::trunc);
-            source << mnstore::fileDigest(tilingPath) << "\n";
-        }
+        saveDeliveryIndexSource(root(), mnstore::fileDigest(tilingPath));
 
         // open delivery index
         index_ = boost::in_place(referenceFrame().metaBinaryOrder

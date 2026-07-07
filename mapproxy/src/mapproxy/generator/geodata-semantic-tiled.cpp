@@ -247,12 +247,7 @@ void GeodataSemanticTiled::prepare_impl(Arsenal&)
         mmapped::TileIndex::write(tmpPath, index.tileIndex);
         fs::rename(tmpPath, deliveryIndexPath);
 
-        {
-            std::ofstream source
-                ((root() / "delivery.index.src").string()
-                 , std::ostream::out | std::ostream::trunc);
-            source << mnstore::fileDigest(tilingPath) << "\n";
-        }
+        saveDeliveryIndexSource(root(), mnstore::fileDigest(tilingPath));
 
         index_ = boost::in_place(referenceFrame().metaBinaryOrder
                                  , deliveryIndexPath);
