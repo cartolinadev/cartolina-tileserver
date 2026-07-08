@@ -8,7 +8,27 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
-## 2026-07-07 — fixed 500 on metatiles at coarse lods a skipPartial tiling leaves empty
+## 2026-07-08 — fixed horizontal blur on dateline and polar tiles
+
+Tiles whose extents touch the ±180° meridian of a global source (QSC back
+face, plate-carrée datasets) rendered horizontally smeared; melown2015
+polar tiles showed the same defect. Overview selection was ruled out — the
+smeared tile picks the same overview as its sharp neighbours. GDAL's warp
+kernel sizes its smoothing filter from the dst/src window ratio, and a
+wrap-around footprint inflates the source window to nearly the whole
+raster width, widening the kernel ~45× in x. Polar tiles hit the identical
+mechanism through legitimately all-longitude windows.
+
+Fixed in `externals/libgeo` `GeoDataset::warpInto` by setting the warp
+option `XSCALE=FROM_GRID_SAMPLING`: the kernel scale is then derived from
+local per-pixel derivatives, which ignore the wrap discontinuity. GDAL has
+this rescue built in but auto-triggers it only at y/x anisotropy > 100;
+these tiles sit well below that. The sentinel is an undocumented but
+stable knob present in GDAL 3.2–3.12; GDAL 3.13 made grid sampling the
+default and dropped the sentinel (any XSCALE parses as a number there),
+so the option is version-bounded to that range. Interior tiles are
+byte-identical before/after; dateline and polar tiles come out sharp,
+matching full-resolution reference renders.
 
 The served (delivery) index is the synthetic full-tileRange bootstrap
 intersected with the paired tiling, but `TileIndex::combine` visits only
