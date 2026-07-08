@@ -1,3 +1,15 @@
+cartolina-tileserver (1.125) testing; urgency=medium
+
+  * serve: fix delivery index leaking stale flags at treeless tiling lods;
+    a skipPartial tiling with no tree at a coarse lod left the synthetic
+    bootstrap's blanket mesh flags unintersected, advertising tiles the
+    store never stored and 500ing the serve-path integrity check.
+    delivery.index.src now also tracks a derivation revision so a
+    deployed store's cached delivery index is rebuilt on first start
+    after this fix
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Wed, 08 Jul 2026 15:33:38 +0200
+
 cartolina-tileserver (1.124) testing; urgency=medium
 
   * serve: metatiles above a resource's lod range are structural
