@@ -8,6 +8,20 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-10 — navtile coverage findings; backlog entry
+
+While fixing terrain-height jitter in the client (see the cartolina-js
+session log, same date), established how this server treats navtile
+coverage: the stored navtile format carries a quadtree coverage mask
+that `SurfaceDem::generateNavtile` fills from the warped DEM, but the
+delivered flavor (`serializeNavtileProper`) strips it; texels outside
+coverage are never written and the image is allocated uninitialized;
+and the unified tiling pass sets the navtile flag on every emitted
+tile sampled coarser than the source, watertight or not. Filed as the
+backlog entry "Navtiles on partial-coverage tiles are served without
+coverage" with three options (drop the flag on non-watertight tiles,
+define the filler texels, or deliver the mask).
+
 ## 2026-07-08 — fixed horizontal blur on dateline and polar tiles
 
 Tiles whose extents touch the ±180° meridian of a global source (QSC back

@@ -11,6 +11,49 @@ The metanode-store and unified-tiling work in this backlog is specified by
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## Navtiles on partial-coverage tiles are served without coverage
+
+**Opened:** 2026-07-10
+**Status:** open — decide whether partial-coverage tiles should carry a
+navtile at all, and what their uncovered texels should hold.
+**Related:** the cartolina-js backlog entry "coverage-aware point terrain
+queries"; client mitigation landed there 2026-07-10 (a height answer must
+lie within the claiming metanode's geometry bbox).
+
+A navtile pane spans its tile's whole extent, but nothing delivered to the
+client says which texels are backed by data:
+
+- The tiling pass advertises the navtile flag on every emitted tile whose
+  sampling is coarser than the source, watertight or not
+  (`src/tiling/unified.cpp`, `emit()`: `trueScale(center, samplePx) < 1.0`
+  sets `TiFlag::navtile` independently of the watertight bit).
+- The stored navtile format does carry a quadtree coverage mask
+  (`vts-libs/vts/navtile.hpp`, `NavTile::coverageMask`), and
+  `SurfaceDem::generateNavtile` fills it faithfully from the warped DEM's
+  validity. The delivered flavor strips it: `serializeNavtileProper()`
+  writes the height image only (`vts-libs/vts/navtile.cpp`).
+- Texels outside coverage are never written by the sampling loop in
+  `SurfaceDem::generateNavtile`, and `opencv::NavTile::createData()`
+  allocates the image uninitialized — uncovered texels of a delivered
+  partial-coverage navtile hold undefined values.
+
+A height query that samples such a pane outside the covered part reads
+filler it cannot distinguish from terrain. The client now rejects samples
+far from the metanode's geometry bbox, but that heuristic accepts filler
+whenever the geometry's bbox spans the tile (diagonal coverage).
+
+Options, not mutually exclusive:
+
+- Do not set `TiFlag::navtile` on non-watertight tiles. Simple; matches
+  the navtile's navigation purpose (a back surface or a coarser ancestor
+  answers instead). Costs navtile resolution near dataset fringes.
+- Define the uncovered texels: extend the covered values outward so
+  near-edge samples decode to something anchored to real data, and the
+  pane is at least deterministic.
+- Deliver the coverage mask (serve the raw flavor or a v6-era format
+  extension) and teach the client to honor it. The correct fix, and the
+  most work; needs a frontend/backend contract, so an RFC in cartolina-js.
+
 ## Per-surface metatile packaging, if ever needed, goes in the store header
 
 **Opened:** 2026-07-05
