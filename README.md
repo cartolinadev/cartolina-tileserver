@@ -42,7 +42,15 @@ functionality:
 
 * terrain TINs (or surfaces in cartolina terminology) produced by the 
 **surface-\*** now come with normal maps, which is in line with the independent
-lighting model that cartolina-js relies on. 
+lighting model that cartolina-js relies on.
+
+* resource preparation has been simplified, an input dataset no longer needs the 
+'min' and 'max' overviews. Additionally, mappproxy-tiling runs a lot faster on
+DEM-based resources.
+
+Behind the scenes, the metatile machinery has been largely rewritten making the 
+metatile delivery (one of the critical-path tasks in cartolina) substantially faster 
+and making the brand-new glue-free recursive tree traversal on the client possible.
 
 By and large `cartolina-tileserver` is a functional superset rather than a divergent fork
 of the original mapproxy, so it can be readily used as a replacement. Whatever 
