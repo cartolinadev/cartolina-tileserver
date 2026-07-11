@@ -8,6 +8,22 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-07-11 — backlog housekeeping: tileserver entries reclaimed from cartolina-js
+
+Two tileserver-tagged entries lived in the cartolina-js backlog. The
+zero-submesh entry ("surface generator emits a zero-submesh mesh") is
+still open — the `!lm.mesh.vertices.empty()` guard in
+`SurfaceBase::generateMesh` is unchanged — and moved into this repo's
+backlog. The RF-validity flags-vs-mesh entry ("mesh content contradicts
+metatile flags at RF-validity boundaries") was closed as resolved: the
+2026-07-05 unified-tiling work decided the contract it asked for
+(watertight means full coverage of the cell's rf-valid area, meshes keep
+clipping at the constraint, producers and consumers exempt rf-invalid
+children), and its residual is already tracked here ("Leaf-lod
+watertightness is blind to the rf partition boundary"). Also restored
+the backlog heading "REDESIGN: retire the in-tree MVT driver in favor of
+GDAL's upstream driver", accidentally dropped in a 2026-07-05 edit.
+
 ## 2026-07-10 — navtile coverage findings; backlog entry
 
 While fixing terrain-height jitter in the client (see the cartolina-js
