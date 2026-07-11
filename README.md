@@ -42,7 +42,7 @@ functionality:
 
 * terrain TINs (or surfaces in cartolina terminology) produced by the 
 **surface-\*** now come with normal maps, which is in line with the independent
-lighting model that cartolina-js relies on.
+lighting model that cartolina-js relies on
 
 * resource preparation has been simplified, an input dataset no longer needs the 
 'min' and 'max' overviews. Additionally, mappproxy-tiling runs a lot faster on
