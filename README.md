@@ -34,8 +34,7 @@ in 2017-2023 and which is now officially discontinued.
 
 ## What's different from the legacy vts-mapproxy
 
-Apart from minor fixes and refactoring, the main difference is in the new 
-functionality:
+From operator standpoint, the main difference is in the new functionality:
 
 * there are three new TMS generators (**tms-gdaldem**, **tms-normalmap** and 
 **tms-specularmap**) 
