@@ -8,6 +8,31 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-06 — introspection browser served from vts-libs again
+
+Since 2026-06-05 a surface's `index.html` was generated in C++ by
+`generateIntrospectionBrowser`, which intercepted the request before the
+support-file lookup and left the compiled-in vts-libs page unreachable
+from mapproxy. The compiled-in page kept shipping, stopped being
+exercised, and drifted onto a deployed `launch.js` calling library
+functions that no longer exist.
+
+Both pages are now static templates in vts-libs, chosen by what the
+resource publishes: a surface serves the style-based one, a stored tileset
+the mapConfig-based one. The generated page, the routing branch, and the
+browser-URL helpers are deleted.
+
+What made a static template sufficient is that the generated `style.json`
+now carries the introspection position and the configured browser options
+in the style's `config` block. Geodata introspection is unchanged: its
+`Type::style` is a geodata stylesheet, not a cartolina style, so it keeps
+the mapConfig-based template.
+
+`VTS_BUILTIN_BROWSER_URL` names the distribution directory and the
+templates append only a file name, so a library version can be pinned in
+configuration. Deployments that point it at the library root need the
+distribution path appended.
+
 ## 2026-07-11 — backlog housekeeping: tileserver entries reclaimed from cartolina-js
 
 Two tileserver-tagged entries lived in the cartolina-js backlog. The

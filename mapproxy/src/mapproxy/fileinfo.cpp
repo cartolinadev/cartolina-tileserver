@@ -367,13 +367,17 @@ SurfaceFileInfo::SurfaceFileInfo(const FileInfo &fi)
         auto path(fi.filename);
         if (constants::Self == path) { path = constants::Index; }
 
-        if (path == constants::Index) {
-            type = Type::browser;
+        if (path == constants::Style) {
+            type = Type::style;
             return;
         }
 
-        if (path == constants::Style) {
-            type = Type::style;
+        // a surface generates a cartolina style, so its index.html is
+        // the style-based browser rather than the mapConfig-based one
+        auto fstyle(vts::styleSupportFiles.find(path));
+        if (fstyle != vts::styleSupportFiles.end()) {
+            type = Type::support;
+            support = &fstyle->second;
             return;
         }
 
@@ -454,10 +458,6 @@ Sink::FileInfo SurfaceFileInfo::sinkFileInfo(std::time_t lastModified) const
     case Type::definition:
         return Sink::FileInfo(constants::applicationJson, lastModified)
             .setFileClass(FileClass::config);
-
-    case Type::browser:
-        return Sink::FileInfo(constants::textHtml, lastModified)
-            .setFileClass(FileClass::support);
 
     case Type::style:
         return Sink::FileInfo(constants::applicationJson, lastModified)

@@ -139,7 +139,7 @@ struct SurfaceFileInfo {
 
     enum class Type {
         unknown, file, tile, definition, support, registry, service
-        , browser, style
+        , style
     };
 
     /** File type.

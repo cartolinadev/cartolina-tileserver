@@ -191,34 +191,6 @@ SurfaceBase::SurfaceBase(const Params &params)
 
 namespace {
 
-const char BrowserUrlKey[] = "VTS_BUILTIN_BROWSER_URL";
-const char DefaultBrowserUrl[]
-    = "https://cdn.tspl.re/libs/cartolina/dist/current";
-
-std::string jsonString(const Json::Value &value)
-{
-    std::ostringstream os;
-    os.precision(15);
-    Json::write(os, value);
-    return os.str();
-}
-
-std::string browserUrlBase(const Generator::Config &config)
-{
-    std::string base(DefaultBrowserUrl);
-    if (config.variables) {
-        const auto found(config.variables->find(BrowserUrlKey));
-        if (found != config.variables->end()) {
-            base = found->second;
-        }
-    }
-
-    while (!base.empty() && (base.back() == '/')) {
-        base.pop_back();
-    }
-    return base.empty() ? DefaultBrowserUrl : base;
-}
-
 Json::Value defaultBrowserOptions(const resource::Surface &definition)
 {
     if (definition.introspection.browserOptions.empty()) {
@@ -316,70 +288,19 @@ bool SurfaceBase::updateProperties()
     return changed;
 }
 
-void SurfaceBase::generateIntrospectionBrowser
-    (Sink &sink, const SurfaceFileInfo &fi) const
-{
-    const auto mc(mapConfig(ResourceRoot::none));
-    const auto base(browserUrlBase(config()));
-    const auto options(defaultBrowserOptions(definition_));
-    const auto position(vr::asJson(mc.position));
-
-    std::ostringstream os;
-    os << R"RAW(<!DOCTYPE html>
-<html lang="en">
-<head>
-<title>Cartolina tileserver: introspection</title>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href=")RAW" << base << R"RAW(/cartolina.min.css">
-<script src=")RAW" << base << R"RAW(/cartolina.min.js"></script>
-<style>
-html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
-</style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-const defaultPosition = )RAW" << jsonString(position) << R"RAW(;
-const defaultOptions = )RAW" << jsonString(options) << R"RAW(;
-
-function positionFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('pos');
-  if (!raw) return null;
-
-  const position = raw.split(',');
-  for (let index = 1; index < position.length; index++) {
-    if (index !== 3) position[index] = parseFloat(position[index]);
-  }
-  return position;
-}
-
-const options = cartolina.runtimeOptionsFromUrl({
-  positionInUrl: true,
-  ...defaultOptions
-});
-
-cartolina.map({
-  container: 'map',
-  style: './style.json',
-  position: positionFromUrl() || defaultPosition,
-  options
-});
-</script>
-</body>
-</html>
-)RAW";
-
-    sink.content(os.str(), fi.sinkFileInfo());
-}
-
 void SurfaceBase::generateIntrospectionStyle
     (Sink &sink, const SurfaceFileInfo &fi) const
 {
     Json::Value style(Json::objectValue);
     style["version"] = 2;
     style["reference-frame"] = referenceFrameId();
+
+    // the style carries what the introspection browser needs to start:
+    // the default camera position and the configured runtime options
+    style["position"] = vr::asJson(mapConfig(ResourceRoot::none).position);
+
+    const auto browserOptions(defaultBrowserOptions(definition_));
+    if (!browserOptions.empty()) { style["config"] = browserOptions; }
 
     auto &sources(style["sources"] = Json::objectValue);
     const auto terrainId(resource().id.fullId());
@@ -628,10 +549,6 @@ Generator::Task SurfaceBase
         sink.content(vts::service::generate
                      (fi.serviceFile, fi.fileInfo.filename, fi.fileInfo.query)
                      , FileClass::data);
-        break;
-
-    case SurfaceFileInfo::Type::browser:
-        generateIntrospectionBrowser(sink, fi);
         break;
 
     case SurfaceFileInfo::Type::style:

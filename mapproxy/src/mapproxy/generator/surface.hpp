@@ -118,9 +118,6 @@ private:
                            , vts::SubMesh::TextureMode textureMode
                            = vts::SubMesh::external) const;
 
-    void generateIntrospectionBrowser
-        (Sink &sink, const SurfaceFileInfo &fileInfo) const;
-
     void generateIntrospectionStyle
         (Sink &sink, const SurfaceFileInfo &fileInfo) const;
 
