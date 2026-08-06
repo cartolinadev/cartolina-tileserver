@@ -11,6 +11,47 @@ The metanode-store and unified-tiling work in this backlog is specified by
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## Publish surface credits in the map configuration
+
+**Opened:** 2026-07-31
+**Status:** open
+
+A `tms` resource publishes its credits as string-keyed definitions in
+`boundlayer.json`, which the client reads directly. A `surface` resource
+publishes nothing equivalent. `MetatileBuilder` calls
+`node.updateCredits(credits)`
+([metatile.cpp](../mapproxy/src/mapproxy/generator/metatile.cpp),
+[metatile-store.cpp](../mapproxy/src/mapproxy/generator/metatile-store.cpp)),
+writing the resource's credit ids into the metatile credit table as
+16-bit numeric ids, while only the definitions reach the map
+configuration's top-level `credits` registry.
+
+Three consequences follow from that encoding:
+
+- Every credit used by a surface needs a numeric id that is unique
+  across the installation and present in the registry. A `tms` credit
+  needs neither; see the numeric-id requirement in
+  [resources.md](resources.md).
+- A missing or mismatched numeric id fails silently. The client
+  resolves each metatile credit id through the registry and drops the
+  attribution when the lookup misses, with no warning and no symptom
+  beyond an absent credit line.
+- Whole-surface attribution — the common case, where every tile carries
+  the same credits — pays for a per-tile bitmask it does not need, and
+  cannot be read without fetching a metatile.
+
+### Proposal
+
+A `surface` resource also publishes its credits on its map
+configuration surface entry, in the same string-keyed form
+`boundlayer.json` uses. The metatile credit table stays for the case it
+was designed for, per-tile attribution in server-merged surfaces, and
+existing deployments are unaffected.
+
+The client side already landed: cartolina-js `TerrainSource` accepts a
+surface-level `credits` field, as an id list or a definition table, on
+the same terms as `RasterSource`.
+
 ## BUG: surface generator emits a zero-submesh mesh
 
 **Opened:** 2026-06-06, in the cartolina-js backlog; moved here 2026-07-11.
