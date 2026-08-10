@@ -8,6 +8,37 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-10 — tiling lost whole tile columns along the source antimeridian
+
+A globally tiled DEM served a strip of much coarser tiles along the
+antimeridian: on a QSC reference frame, the tile columns next to the face
+centred on longitude 180 were absent from the flag tile index at every LOD
+below the one where the gap first appeared, so the client stopped its
+descent there and drew an ancestor tile instead. The tiles themselves are
+fine — `mapproxy-tiling` never recorded them.
+
+The cause is GDAL's source-window estimate in the unified pass'
+`filterPass` (`src/tiling/unified.cpp`). GDAL samples points along each
+warp chunk's destination edges, 21 per edge by default, projects them into
+the source, and reads only the bounding box. Where the destination spans
+the source's antimeridian the samples on the seam land at the opposite end
+of the source and the box degenerates into the span of both ends. On a
+source expanded past ±180° for periodicity — what `generatevrtwo` produces
+for a global dataset — that box stops short of the seam on either side,
+and destination pixels covered only by the omitted strip read nothing:
+`maskMax` 0 or an unreduced elevation, i.e. "no data here". The strip is
+one estimator step wide, so it swallows whole tile columns. The libgeo
+`warpInto` path used elsewhere already handles this (it pads the window on
+detecting a wrap), which is why the affected tiles render correctly when
+requested directly.
+
+`filterPass` now samples finely enough that the omitted strip is bounded
+by a fixed number of source pixels, and pads the window by that much
+(`SAMPLE_STEPS` derived from the source raster size, `SOURCE_EXTRA`).
+Re-tiling a global QSC DEM with the fix filled every gap and no tile was
+lost or downgraded; the run cost is unchanged, source reads grow a few
+percent. Datasets tiled before this change keep their gaps until re-tiled.
+
 ## 2026-08-10 — backlog reworked to numbered entries, matching cartolina-js
 
 `docs/backlog.md` carried no entry numbers, so nothing could be cross-

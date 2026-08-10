@@ -576,6 +576,25 @@ cv::Mat filterPass(const fs::path &srcPath
     add("-wm"); add("500");
     add("-multi");
     add("-wo"); add("NUM_THREADS=ALL_CPUS");
+    /* Source-window estimate. GDAL bounds a chunk's source read by the
+     * box of points sampled along the chunk's destination edges; a
+     * destination spanning the source's antimeridian samples both ends
+     * of a global source, and on a source expanded past +-180 for
+     * periodicity that box ends a sampling step short of the seam.
+     * Sample at a step of at most windowSlack source pixels and pad the
+     * box by the same amount, keeping the seam inside the read. A chunk
+     * spans no more of the source than the source itself, which bounds
+     * the step count.
+     */
+    const int windowSlack(64);
+    const int sampleSteps
+        (std::max(21, 1 + (std::max(::GDALGetRasterXSize(src)
+                                    , ::GDALGetRasterYSize(src))
+                           + windowSlack - 1) / windowSlack));
+    add("-wo");
+    add(str(boost::format("SAMPLE_STEPS=%d") % sampleSteps));
+    add("-wo");
+    add(str(boost::format("SOURCE_EXTRA=%d") % windowSlack));
     add("-ot"); add(::GDALGetDataTypeName(dataType));
     if (dstNodata) {
         add("-dstnodata"); add(number(*dstNodata));
