@@ -1,3 +1,13 @@
+cartolina-tileserver (1.127) testing; urgency=medium
+
+  * fix a gap in tiled global and antimeridian-crossing datasets: a strip
+    of tiles straddling the antimeridian was missing from the tiling,
+    making the server fall back to much coarser detail there. Existing
+    tilings of such datasets must be re-run with this version to pick up
+    the fix
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Mon, 10 Aug 2026 17:43:45 +0200
+
 cartolina-tileserver (1.126) testing; urgency=medium
 
   * fix horizontal blur on DEM/imagery tiles at the antimeridian and near

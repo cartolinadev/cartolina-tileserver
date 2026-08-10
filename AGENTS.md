@@ -262,6 +262,11 @@ When asked to build a package, do the following:
    mapproxy/debian/changelog`). Review every commit between that commit and
    `HEAD` and write one bullet per logical, user-visible change; skip
    commits that only record backlog/planning notes with no behavior change.
+   Write each bullet from the operator's perspective: what changed in the
+   software's observable behavior (what it now does, fails to do, or
+   requires), not how the fix works internally. Do not name source files,
+   functions, internal passes, or third-party libraries — those belong in
+   the commit message and session log, not the changelog.
 2. Compute the new version: increment the numeric upstream part of the
    previous version by 1 (e.g. `1.119` -> `1.120`). Do not use
    `dch --increment` for this — it does not understand this project's
