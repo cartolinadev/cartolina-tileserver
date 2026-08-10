@@ -1,3 +1,13 @@
+cartolina-tileserver (1.126) testing; urgency=medium
+
+  * fix horizontal blur on DEM/imagery tiles at the antimeridian and near
+    the poles (global and polar datasets)
+  * introspection: a surface's index.html is now a static file, identical
+    for every surface; the generated style carries what used to vary per
+    page. No semantic change intended.
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Mon, 10 Aug 2026 14:46:03 +0200
+
 cartolina-tileserver (1.125) testing; urgency=medium
 
   * serve: fix delivery index leaking stale flags at treeless tiling lods;
