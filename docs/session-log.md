@@ -8,6 +8,21 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-10 — backlog reworked to numbered entries, matching cartolina-js
+
+`docs/backlog.md` carried no entry numbers, so nothing could be cross-
+referenced stably and closed items sat in the same file as open ones.
+Adopted the cartolina-js convention: entries are numbered in the heading
+(`## N. ...`) in open order, permanent and never reused, and a closed
+entry moves to the new `docs/backlog-archive.md`, keeping its number.
+
+Numbers were assigned by each entry's `Opened` date (oldest = 1); the one
+entry with no recorded date ("background-color keying does not reach the
+VRTWO mask band") was dated from the commit that introduced it
+(2026-06-30). Nine already-resolved/implemented entries moved to the
+archive; ten open entries remain in `backlog.md`, both files newest-first
+per entry number.
+
 ## 2026-08-06 — introspection browser served from vts-libs again
 
 Since 2026-06-05 a surface's `index.html` was generated in C++ by
