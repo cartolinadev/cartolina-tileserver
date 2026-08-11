@@ -8,6 +8,21 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-11 — introspection defers vertical exaggeration to the body
+
+`generateIntrospectionStyle` hardcoded Earth's exaggeration ramps, so a
+resource on a non-Earth reference frame — `mars-qsc`, `pluto-qsc` — was
+introspected with Earth's numbers. It now emits an empty
+`vertical-exaggeration` object, which cartolina-js reads as "use the ramps
+the reference frame's body carries". Those ramps live in `vts-registry`;
+serving them needs no change here, since `vts-libs` re-emits the body's
+authored JSON verbatim.
+
+An introspection page rendered against a registry that predates the body
+field gets no exaggeration at all. Paired with the client change recorded
+in the `cartolina-js` session log. The packages require `vts-registry`
+1.27, the first version that carries the Earth and Mars defaults.
+
 ## 2026-08-10 — tiling lost whole tile columns along the source antimeridian
 
 A globally tiled DEM served a strip of much coarser tiles along the

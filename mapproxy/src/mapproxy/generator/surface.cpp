@@ -318,23 +318,9 @@ void SurfaceBase::generateIntrospectionStyle
     light.append(315);
     light.append(45);
 
-    auto &ve(style["vertical-exaggeration"] = Json::objectValue);
-    auto &heightRamp(ve["heightRamp"] = Json::arrayValue);
-    Json::Value heights(Json::arrayValue);
-    heights.append(0);
-    heights.append(4000);
-    Json::Value scales(Json::arrayValue);
-    scales.append(1.5);
-    scales.append(1.3);
-    heightRamp.append(heights);
-    heightRamp.append(scales);
-
-    auto &progression(ve["viewExtentProgression"] = Json::arrayValue);
-    progression.append(12.3);
-    progression.append(13000000.0);
-    progression.append(1.38);
-    progression.append(1);
-    progression.append(13.5);
+    // empty: the ramps come from the reference frame's body, so each
+    // body is exaggerated on its own terms
+    style["vertical-exaggeration"] = Json::objectValue;
 
     if (hasAtmosphere(referenceFrame())) {
         auto &atmosphere(style["atmosphere"] = Json::objectValue);

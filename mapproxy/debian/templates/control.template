@@ -8,7 +8,7 @@ Homepage: https://www.melown.com/maps
 
 Package: cartolina-tileserver
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
+Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.27)
          , cartolina-tileserver-tools (= ${binary:Version})
 Replaces: vts-mapproxy
 Provides: vts-mapproxy
@@ -18,7 +18,7 @@ Description: backend server daemon for cartolina
 
 Package: cartolina-tileserver-tools
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.25)
+Depends: ${shlibs:Depends}, ${misc:Depends}, vts-registry (>= 1.27)
 Replaces: vts-mapproxy-tools
 Provides: vts-mapproxy-tools
 Conflicts: vts-mapproxy-tools
