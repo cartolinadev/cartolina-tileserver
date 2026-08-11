@@ -1,3 +1,12 @@
+cartolina-tileserver (1.128) testing; urgency=medium
+
+  * introspection now takes vertical exaggeration from the reference
+    frame's body instead of hardcoded Earth numbers, so introspecting a
+    non-Earth surface (e.g. Mars, Pluto) shows that body's own
+    exaggeration ramps. Requires vts-registry 1.27 or later
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Wed, 12 Aug 2026 01:57:22 +0200
+
 cartolina-tileserver (1.127) testing; urgency=medium
 
   * fix a gap in tiled global and antimeridian-crossing datasets: a strip
