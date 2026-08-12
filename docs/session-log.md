@@ -8,6 +8,49 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-13 — tool log files follow the process umask
+
+`libservice` opened the log file through the dbglog call that carries no
+creation mode, and dbglog's default mode is owner-only, so every log file
+a tool created was mode 0600. A data tool writes its run record into the
+dataset directory it operates on, and the operators who share that
+directory could not read it. A umask cannot widen a 0600 file. Packaged
+server logs never showed this because logrotate creates them 0644 and
+`O_CREAT` ignores the mode on a file that already exists. Both
+`libservice` call sites now open with 0666 and let the umask decide; the
+submodule gitlink moves with this change.
+
+## 2026-08-13 — tiling exhausted memory on a wide source raster
+
+The antimeridian fix of 2026-08-10 sets `SAMPLE_STEPS` to one sampling
+step per 64 source pixels, so the step count grows with the source
+raster. GDAL re-samples on a square grid of that many points per side
+whenever an edge sample fails to transform, which happens for any
+destination that reaches past a pole. The grid holds 28 bytes per point,
+so its size grows with the square of the step count. On a wide source it
+needs tens of gigabytes, and GDAL allocates it per warp chunk, in every
+pass, with the passes of all division nodes running at once.
+`mapproxy-tiling` filled memory and swap within two minutes of starting
+and the kernel killed it. When the allocation fails instead, GDAL logs
+`Unable to compute source region ..., skipping` and the pass returns an
+empty grid, so the division node is published as if the dataset had no
+data there.
+
+`filterPass` now limits the step count to a 64 MB sample grid, about 1550
+steps. It then sets `SOURCE_EXTRA` to the number of source pixels one
+step spans at that count, so the padding still covers the strip the
+sampling can miss. Tiles along the antimeridian are recorded as before.
+
+The cost is processing time. A coarser step means wider padding, and
+every warp chunk reads that padding on all four sides, so the pass reads
+more source data and takes longer. Sources up to roughly 100 k pixels
+wide never reach the cap: their step count and their 64-pixel padding are
+unchanged and they tile to byte-identical artifacts.
+
+GDAL has no per-axis `SOURCE_EXTRA`, so the padding is symmetric, while
+the strip it covers is always vertical — x is the periodic axis. The rows
+above and below each chunk are read for nothing.
+
 ## 2026-08-11 — introspection defers vertical exaggeration to the body
 
 `generateIntrospectionStyle` hardcoded Earth's exaggeration ramps, so a

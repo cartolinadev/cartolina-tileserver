@@ -582,19 +582,32 @@ cv::Mat filterPass(const fs::path &srcPath
      * of a global source, and on a source expanded past +-180 for
      * periodicity that box ends a sampling step short of the seam.
      * Sample at a step of at most windowSlack source pixels and pad the
-     * box by the same amount, keeping the seam inside the read. A chunk
-     * spans no more of the source than the source itself, which bounds
-     * the step count.
+     * box by the source pixels one step spans, keeping the seam inside
+     * the read. A chunk spans no more of the source than the source
+     * itself, which bounds the step count.
+     *
+     * The step count carries a ceiling: GDAL re-samples on a square
+     * grid of SAMPLE_STEPS points per side as soon as one edge sample
+     * fails to transform (a destination reaching past a pole does),
+     * and that grid costs 28 bytes per point. sampleGridBudget bounds
+     * it; beyond that the step coarsens and the padding grows with it.
      */
     const int windowSlack(64);
+    const std::size_t sampleGridBudget(64u << 20);
+    const int maxSampleSteps(int(std::sqrt(sampleGridBudget / 28.0)));
+    const int sourceSize(std::max(::GDALGetRasterXSize(src)
+                                  , ::GDALGetRasterYSize(src)));
     const int sampleSteps
-        (std::max(21, 1 + (std::max(::GDALGetRasterXSize(src)
-                                    , ::GDALGetRasterYSize(src))
-                           + windowSlack - 1) / windowSlack));
+        (std::max(21, std::min(maxSampleSteps
+                               , 1 + (sourceSize + windowSlack - 1)
+                               / windowSlack)));
+    const int sourceExtra
+        (std::max(windowSlack
+                  , (sourceSize + sampleSteps - 1) / sampleSteps));
     add("-wo");
     add(str(boost::format("SAMPLE_STEPS=%d") % sampleSteps));
     add("-wo");
-    add(str(boost::format("SOURCE_EXTRA=%d") % windowSlack));
+    add(str(boost::format("SOURCE_EXTRA=%d") % sourceExtra));
     add("-ot"); add(::GDALGetDataTypeName(dataType));
     if (dstNodata) {
         add("-dstnodata"); add(number(*dstNodata));
