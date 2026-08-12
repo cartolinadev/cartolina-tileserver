@@ -1,3 +1,13 @@
+cartolina-tileserver (1.129) testing; urgency=medium
+
+  * fix an out-of-memory crash in mapproxy-tiling when tiling a wide
+    source whose destination reaches past a pole: the process could
+    exhaust memory and swap and get killed, or under a memory limit
+    silently publish the affected division node as empty. Such sources
+    now tile successfully, using a coarser sampling step during warping
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 13 Aug 2026 00:49:39 +0200
+
 cartolina-tileserver (1.128) testing; urgency=medium
 
   * introspection now takes vertical exaggeration from the reference
