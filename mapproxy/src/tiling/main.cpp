@@ -598,6 +598,9 @@ int Tiling::runImpl()
         << (unifiedConfig_.geoidGrid
             ? *unifiedConfig_.geoidGrid : std::string("none")) << ".";
 
+    LOG(info3)
+        << "Measuring the dataset against reference frame <"
+        << referenceFrame_ << ">.";
     const auto ds(probe(dataset_, vectorResolution_));
     auto m(calipers::measure(rf, ds, calipersConfig_));
 

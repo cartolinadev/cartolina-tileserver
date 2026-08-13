@@ -18,23 +18,6 @@ existing entry, even one added earlier in the same session. Assign the next
 entry the number one higher than the highest number used so far across this
 file and [backlog-archive.md](backlog-archive.md).**
 
-## 20. TOOLS: pad the filter-pass source window in x only
-
-**Opened:** 2026-08-13
-**Status:** open
-
-`filterPass` (`src/tiling/unified.cpp`) pads each warp chunk's source
-window with GDAL's `SOURCE_EXTRA`, which applies to both axes. The strip
-the padding exists to cover lies along the antimeridian, so only the x
-axis needs it. On a wide source the padding is several hundred pixels and
-a chunk is far wider than it is tall in source pixels, so the rows added
-above and below dominate the extra reading and nothing uses them.
-
-Removing the waste means computing the source window in `filterPass`
-instead of asking GDAL for it — `GDALWarpOperation` with an explicit
-chunk list rather than the `GDALWarp` utility call. Worth doing only if
-tiling a wide source proves too slow in practice.
-
 ## 19. Publish surface credits in the map configuration
 
 **Opened:** 2026-07-31

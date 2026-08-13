@@ -144,42 +144,106 @@ private:
 const double ElevationNodata(-1.0e6);
 const double ElevationValidLimit(-0.5e6);
 
-/** Temporary VRT exposing the source's GDAL mask band as a warpable
- *  byte band; removed on destruction.
+/** Columns of the source raster covering one full x-period, grown
+ *  outward to whole pixels; all columns when the source has no
+ *  x-periodicity or no margins beyond it.
+ *
+ *  The filter passes warp from a view restricted to these columns so
+ *  that GDAL's antimeridian handling covers the +-180deg seam: a warp
+ *  chunk whose destination spans the seam samples both ends of the
+ *  view, and GDAL widens any estimated source window covering more
+ *  than 90% of the raster width to the full raster
+ *  (ComputeSourceWindow, alg/gdalwarpoperation.cpp). A view with
+ *  margins beyond the period keeps such windows under that threshold
+ *  and loses the seam-adjacent strip between two estimation samples.
+ *  The min/max kernel reduces over each destination pixel's own
+ *  source footprint and reads nothing around it, so the margins hold
+ *  no data these passes need.
  */
-class MaskVrt {
+struct CoreColumns {
+    int offset;
+    int size;
+};
+
+CoreColumns coreColumns(const geo::GeoDataset::Descriptor &ds)
+{
+    const CoreColumns whole{ 0, ds.size.width };
+    if (!ds.geoTransform.isUpright()) { return whole; }
+
+    const auto periodic(geo::isPeriodic(ds.srs));
+    if (!periodic) { return whole; }
+    if (periodic->type != geo::Periodicity::Type::x) { return whole; }
+
+    const auto step(ds.resolution(0));
+    const auto column([&](double x)
+    {
+        return (x - ds.extents.ll(0)) / step;
+    });
+    const int begin
+        (std::max(0, int(std::floor(column(periodic->min)))));
+    const int end
+        (std::min(ds.size.width, int(std::ceil(column(periodic->max)))));
+    if (begin >= end) { return whole; }
+
+    return { begin, end - begin };
+}
+
+/** Temporary VRT exposing a filter-pass warp source, either the data
+ *  band or the dataset's GDAL mask band as a warpable byte band,
+ *  restricted to the given source columns; removed on destruction.
+ */
+class SourceVrt {
 public:
-    MaskVrt(const fs::path &source) {
+    enum class Band { data, mask };
+
+    SourceVrt(const fs::path &source, Band band, const CoreColumns &core) {
+
         const auto ds(geo::GeoDataset::open(source));
-        const auto size(ds.size());
-        const auto gt(ds.geoTransform());
+        const auto desc(ds.descriptor());
+        auto gt(ds.geoTransform());
+        gt[0] += core.offset * gt[1];
 
         path_ = fs::temp_directory_path()
-            / fs::unique_path("tiling-mask-%%%%%%.vrt");
+            / fs::unique_path("tiling-source-%%%%%%.vrt");
 
         std::ofstream file;
         file.exceptions(std::ostream::failbit | std::ostream::badbit);
         file.open(path_.string(), std::ostream::out | std::ostream::trunc);
         file.precision(18);
-        file << "<VRTDataset rasterXSize=\"" << size.width
-             << "\" rasterYSize=\"" << size.height << "\">\n"
+        file << "<VRTDataset rasterXSize=\"" << core.size
+             << "\" rasterYSize=\"" << desc.size.height << "\">\n"
              << "  <SRS>" << ds.srsWkt() << "</SRS>\n"
              << "  <GeoTransform>"
              << gt[0] << ", " << gt[1] << ", " << gt[2] << ", "
              << gt[3] << ", " << gt[4] << ", " << gt[5]
              << "</GeoTransform>\n"
-             << "  <VRTRasterBand dataType=\"Byte\" band=\"1\">\n"
-             << "    <SimpleSource>\n"
+             << "  <VRTRasterBand dataType=\""
+             << ((band == Band::data)
+                 ? ::GDALGetDataTypeName(desc.dataType) : "Byte")
+             << "\" band=\"1\">\n";
+        if ((band == Band::data) && desc.nodata) {
+            file << "    <NoDataValue>" << *desc.nodata
+                 << "</NoDataValue>\n";
+        }
+        file << "    <SimpleSource>\n"
              << "      <SourceFilename relativeToVRT=\"0\">"
              << fs::absolute(source).string() << "</SourceFilename>\n"
-             << "      <SourceBand>mask,1</SourceBand>\n"
+             << "      <SourceBand>"
+             << ((band == Band::data) ? "1" : "mask,1")
+             << "</SourceBand>\n"
+             << "      <SrcRect xOff=\"" << core.offset
+             << "\" yOff=\"0\" xSize=\"" << core.size
+             << "\" ySize=\"" << desc.size.height << "\"/>\n"
+             << "      <DstRect xOff=\"0\" yOff=\"0\" xSize=\""
+             << core.size << "\" ySize=\"" << desc.size.height
+             << "\"/>\n"
              << "    </SimpleSource>\n"
              << "  </VRTRasterBand>\n"
              << "</VRTDataset>\n";
         file.close();
     }
 
-    ~MaskVrt() {
+    ~SourceVrt() {
         boost::system::error_code ec;
         fs::remove(path_, ec);
     }
@@ -576,38 +640,6 @@ cv::Mat filterPass(const fs::path &srcPath
     add("-wm"); add("500");
     add("-multi");
     add("-wo"); add("NUM_THREADS=ALL_CPUS");
-    /* Source-window estimate. GDAL bounds a chunk's source read by the
-     * box of points sampled along the chunk's destination edges; a
-     * destination spanning the source's antimeridian samples both ends
-     * of a global source, and on a source expanded past +-180 for
-     * periodicity that box ends a sampling step short of the seam.
-     * Sample at a step of at most windowSlack source pixels and pad the
-     * box by the source pixels one step spans, keeping the seam inside
-     * the read. A chunk spans no more of the source than the source
-     * itself, which bounds the step count.
-     *
-     * The step count carries a ceiling: GDAL re-samples on a square
-     * grid of SAMPLE_STEPS points per side as soon as one edge sample
-     * fails to transform (a destination reaching past a pole does),
-     * and that grid costs 28 bytes per point. sampleGridBudget bounds
-     * it; beyond that the step coarsens and the padding grows with it.
-     */
-    const int windowSlack(64);
-    const std::size_t sampleGridBudget(64u << 20);
-    const int maxSampleSteps(int(std::sqrt(sampleGridBudget / 28.0)));
-    const int sourceSize(std::max(::GDALGetRasterXSize(src)
-                                  , ::GDALGetRasterYSize(src)));
-    const int sampleSteps
-        (std::max(21, std::min(maxSampleSteps
-                               , 1 + (sourceSize + windowSlack - 1)
-                               / windowSlack)));
-    const int sourceExtra
-        (std::max(windowSlack
-                  , (sourceSize + sampleSteps - 1) / sampleSteps));
-    add("-wo");
-    add(str(boost::format("SAMPLE_STEPS=%d") % sampleSteps));
-    add("-wo");
-    add(str(boost::format("SOURCE_EXTRA=%d") % sourceExtra));
     add("-ot"); add(::GDALGetDataTypeName(dataType));
     if (dstNodata) {
         add("-dstnodata"); add(number(*dstNodata));
@@ -681,10 +713,18 @@ public:
                 , const UnifiedConfig &config)
         : referenceFrame_(referenceFrame), lodRange_(lodRange)
         , world_(tileRanges), config_(config)
-        , dataset_(dataset)
         , dem_(geo::GeoDataset::open(dataset))
-        , maskVrt_(dataset)
+        , core_(coreColumns(dem_.descriptor()))
+        , demVrt_(dataset, SourceVrt::Band::data, core_)
+        , maskVrt_(dataset, SourceVrt::Band::mask, core_)
     {
+        if (core_.size != dem_.size().width) {
+            LOG(info3)
+                << "Unified pass: warp source restricted to columns ["
+                << core_.offset << ", " << (core_.offset + core_.size)
+                << ") covering one x-period.";
+        }
+
         storeHeader_.metaBinaryOrder = config.metaBinaryOrder;
         storeHeader_.metaDepth = config.metaDepth;
 
@@ -770,9 +810,10 @@ private:
     const World world_;
     const UnifiedConfig &config_;
 
-    const fs::path dataset_;
     geo::GeoDataset dem_;
-    MaskVrt maskVrt_;
+    CoreColumns core_;
+    SourceVrt demVrt_;
+    SourceVrt maskVrt_;
 
     mnstore::Header storeHeader_;
     vts::TileIndex tileIndex_;
@@ -908,13 +949,13 @@ void UnifiedPass::schedulePasses
             const auto name(str(boost::format("%s elevation min")
                                 % job->node.id));
             job->elevMin = schedulePass
-                (pool, *job, dataset_, GDT_Float32, ElevationNodata, "min"
-                 , name);
+                (pool, *job, demVrt_.path(), GDT_Float32, ElevationNodata
+                 , "min", name);
             const auto maxName(str(boost::format("%s elevation max")
                                    % job->node.id));
             job->elevMax = schedulePass
-                (pool, *job, dataset_, GDT_Float32, ElevationNodata, "max"
-                 , maxName);
+                (pool, *job, demVrt_.path(), GDT_Float32, ElevationNodata
+                 , "max", maxName);
         }
     }
 

@@ -8,6 +8,39 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-13 — antimeridian warp options replaced by a one-period view
+
+The warp options the 2026-08-10 antimeridian fix added to the tiling
+filter passes (and the 2026-08-13 cap kept) made planetary tiling
+unusably slow, in two independent ways:
+
+- `SOURCE_EXTRA` pads every chunk's source window in both axes. GDAL
+  splits any chunk whose window exceeds the warp memory budget, down to
+  2×2 destination pixels. A chunk spanning the antimeridian of a
+  periodic source keeps a near-full-width window at any destination
+  size, and with several hundred rows of padding that window never fits
+  the budget — the seam region degenerates into thousands of tiny
+  chunks, each re-reading a multi-gigabyte source window.
+- When a pole lies inside the warp destination, GDAL estimates every
+  chunk's source window from a `SAMPLE_STEPS`² grid instead of sampling
+  the chunk's edges, and re-estimates at every step of its recursive
+  chunk split. At the capped 1548 steps that is 2.4 million transformed
+  points and a 67 MB allocation per estimate; polar division nodes
+  spent hours computing chunk lists without warping a pixel.
+
+Both options are removed. The filter passes instead warp from a
+temporary VRT restricted to one x-period of a periodic source
+(`coreColumns`/`SourceVrt` in `src/tiling/unified.cpp`). On a
+one-period view, a destination chunk spanning the ±180° seam samples
+both raster ends and GDAL widens any estimated window covering more
+than 90 % of the raster width to the full raster, so the seam cannot
+fall outside the read — the original gap existed only because
+periodicity margins kept wrapped windows below that threshold. The
+min/max reduction reads no pixels outside each destination pixel's own
+footprint, so the margins hold nothing these passes need and stored
+values are unchanged. A planetary re-tile reproduces the seam-complete
+flag index byte-identically; polar and seam nodes warp at normal speed.
+
 ## 2026-08-13 — tool log files follow the process umask
 
 `libservice` opened the log file through the dbglog call that carries no

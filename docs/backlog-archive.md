@@ -7,6 +7,18 @@ numbers are not reused.
 
 **Newly closed entries go directly below this line, newest first.**
 
+## 20. TOOLS: pad the filter-pass source window in x only
+
+**Opened:** 2026-08-13
+**Status:** superseded 2026-08-13 — the filter passes set no
+`SOURCE_EXTRA` at all; they warp from a one-period view of a periodic
+source and GDAL's own antimeridian handling keeps the seam inside every
+window (see the session log).
+
+The entry asked to narrow `SOURCE_EXTRA` padding to the x axis because
+the rows it added above and below each chunk window dominated the extra
+reading. With the padding gone there is nothing to narrow.
+
 ## 12. P1 CORRECTNESS: prune must not split child sets
 
 **Opened:** 2026-07-02
