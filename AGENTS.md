@@ -58,6 +58,16 @@ Add new entries to `docs/backlog.md` directly below its introduction, newest
 first. Add new entries to `docs/session-log.md` directly below its
 introduction, newest first.
 
+A backlog entry may be rewritten freely while it is still open, to sharpen
+the problem description as understanding improves. When closing an entry and
+moving it to `docs/backlog-archive.md`, never rewrite it — a rewritten
+resolution loses the original argument and becomes noise duplicating the
+commit message and session log. This applies to partial resolutions too:
+append a `Resolution:` (or partial-resolution) paragraph below the original
+text describing what was actually done; do not erase or paraphrase the
+original report to make room for it. Keep the entry's text exactly as it
+was, changing only the `Status:` line.
+
 ### Documentation style
 
 Keep documentation light, direct, and useful. State the rule, command, or

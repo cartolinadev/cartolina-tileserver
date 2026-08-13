@@ -11,20 +11,47 @@ numbers are not reused.
 
 **Opened:** 2026-06-13
 **Status:** implemented 2026-08-13 — no dataset carries a wrap halo at
-all; the wrap is supplied per warp.
+all; the wrap is supplied per warp. See resolution note below.
 
-generatevrtwo padded the base of an x-periodic dataset by 3·2^levels
-pixels per side so that the coarsest overview would still have three
-pixels of resampling context across the ±180° seam. GDAL overviews
-share the base extents, so the margin had to be sized in ground units
-at the coarsest level; on a deep pyramid that approaches one whole
-period per side, and the padded width was then stored and warped at
-every level.
+generatevrtwo's x-wrap padding scales with the overview count, not the
+seam width. mapproxy-calipers reports an *engaged* `wrapx` for any
+x-periodic source whose extent reaches ±180° — value 0 when the seam is
+exact, since both overhangs are 0. setup-resource forwards it
+(`config.wrapx = cm.xOverlap`), and generatevrtwo gates on
+`if (!config.wrapx)`: an engaged optional(0) is truthy, so it enters the
+wrap branch and pads the base by `xPlus = 3·2^(overview levels)` px per
+side regardless of the overlap value (the 0 only zeroes the sampling
+shift).
 
-Neither of the ideas recorded here was taken. Per-level pixel padding
-cannot be expressed at all, since it implies per-level extents; capping
-the padded levels would have left the same margin in the base.
+The intent is sound — give the coarsest overview 3 px of lanczos wrap
+context — but projecting that need down to base resolution makes the
+halo grow with pyramid depth. A global source with N overviews gains
+3·2^N px of halo per side; on a deep pyramid this exceeds the data width
+itself, and the padded base and its whole overview pyramid are then
+stored and processed at the inflated width.
 
+Worked example: a seamless global source at 3 arc-sec (~432000 px wide)
+with 17 overviews gains 6·2^17 = 786432 px of padding — more than the
+data — to give a ~10 px top overview its 3 px margin, leaving the stored
+result ~2.8× the necessary size. Any source that runs through
+generatevrtwo with wrap enabled is affected; a source served as a plain
+VRT without generatevrtwo is not.
+
+A side effect: re-running calipers on a generatevrtwo output re-reads the
+baked halo as a large `wrapx`. That value is an artifact, not a
+mapproxy-tiling input, and must never be fed back into another
+generatevrtwo run, or the halo doubles.
+
+Idea: build the wrap halo per overview level — each level wraps 3 px from
+its own opposite edge — instead of padding the base by 3·2^levels, so the
+base carries only the actual seam overlap (often 0) plus a small fixed
+margin. Alternatively cap the padded levels, accepting a non-wrapped
+margin on the few coarsest overviews where 3 px already spans a large
+distance.
+
+**Resolution:** neither idea recorded above was taken. Per-level pixel
+padding cannot be expressed at all, since it implies per-level extents;
+capping the padded levels would have left the same margin in the base.
 Instead the halo is gone from the stored data and the wrap happens at
 warp time: `geo::GeoDataset::warpInto` reads an x-periodic source
 through a padded in-memory view whenever the destination reaches the
@@ -37,14 +64,24 @@ is gone.
 ## 20. TOOLS: pad the filter-pass source window in x only
 
 **Opened:** 2026-08-13
-**Status:** superseded 2026-08-13 — the filter passes set no
-`SOURCE_EXTRA` at all; they warp from a one-period view of a periodic
-source and GDAL's own antimeridian handling keeps the seam inside every
-window (see the session log).
+**Status:** superseded 2026-08-13 — see resolution note below.
 
-The entry asked to narrow `SOURCE_EXTRA` padding to the x axis because
-the rows it added above and below each chunk window dominated the extra
-reading. With the padding gone there is nothing to narrow.
+`filterPass` (`src/tiling/unified.cpp`) pads each warp chunk's source
+window with GDAL's `SOURCE_EXTRA`, which applies to both axes. The strip
+the padding exists to cover lies along the antimeridian, so only the x
+axis needs it. On a wide source the padding is several hundred pixels and
+a chunk is far wider than it is tall in source pixels, so the rows added
+above and below dominate the extra reading and nothing uses them.
+
+Removing the waste means computing the source window in `filterPass`
+instead of asking GDAL for it — `GDALWarpOperation` with an explicit
+chunk list rather than the `GDALWarp` utility call. Worth doing only if
+tiling a wide source proves too slow in practice.
+
+**Resolution:** the filter passes set no `SOURCE_EXTRA` at all; they warp
+from a one-period view of a periodic source and GDAL's own antimeridian
+handling keeps the seam inside every window (see the session log). With
+the padding gone there is nothing left to narrow.
 
 ## 12. P1 CORRECTNESS: prune must not split child sets
 
