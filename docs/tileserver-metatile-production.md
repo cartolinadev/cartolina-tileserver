@@ -83,6 +83,15 @@ avoiding full-resolution reads for coarse tiles. Meshes are still
 built from the normal pyramid (`demOptimal`) and navtiles from `dem`,
 so the normal pyramid stays mandatory.
 
+**Global datasets.** A dataset in an x-periodic SRS is stored at
+exactly one period, and every level of the pyramid keeps the extents
+of the input. `generatevrtwo` detects the periodicity from the raster
+itself and crops any whole-column overlap (such as a duplicated
+antimeridian column) to reach one period. Resampling across the
+±180° seam needs source data from the opposite edge; libgeo supplies
+it per warp, so no dataset carries a stored wrap margin. See
+"Antimeridian handling" below.
+
 **Cost.** For each overview level, every tile is warped from the
 level above using GDAL `warpInto()`, parallelised by tile with
 OpenMP. For a planet-scale DEM this step takes multiple hours: the
@@ -176,6 +185,43 @@ reference frame, a source hash, the pairing digest, and the resource's
 `geoidGrid` and `heightFunction`, so a stale or mismatched store is
 detected at load. See [rfc-metanode-store.md][rfc-7] §3
 for the format and §4 for the generation method.
+
+
+## Antimeridian handling
+
+Source: `wrapPadSource` in `externals/libgeo/geo/geodataset.cpp`.
+
+A raster in an x-periodic SRS is continuous across ±180°, but GDAL
+resampling kernels are not: at the raster edge a kernel reads only the
+pixels that are there, so a destination just east of the seam and one
+just west of it interpolate from unrelated data and disagree along
+their common border.
+
+`geo::GeoDataset::warpInto` closes the gap for every caller. When the
+source covers exactly one x-period (`geo::xPeriodOverlap`, which also
+requires an upright geotransform) and the destination reaches the
+seam, the warp reads through an in-memory VRT of the source widened by
+a few columns wrapped in from the opposite edge. The pad is sized from
+the resampling kernel's radius and the downsampling ratio, and is
+built after overview selection, so it wraps whichever level the warp
+actually reads.
+
+The destination test is four corner transforms, the same ones the
+source-window estimate already performs; a destination away from the
+seam skips the padding entirely. This covers both overview generation
+and request-time serving, since both go through `warpInto`.
+
+Two consequences worth knowing:
+
+- No dataset needs a stored wrap margin. Padding a dataset instead
+  would have to be done in ground units at the *coarsest* overview,
+  because GDAL overviews share the base extents — which for a deep
+  pyramid approaches one whole period of margin per side.
+- A stored margin is actively harmful to the tiling pass, whose
+  source-window estimate relies on GDAL's own rule of widening a
+  wrapped window to the full raster; margins keep the window below
+  that threshold. `mapproxy-tiling` therefore restricts its filter
+  passes to one period as well.
 
 
 ## Metatile serving

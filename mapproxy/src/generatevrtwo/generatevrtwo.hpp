@@ -67,7 +67,6 @@ struct Config {
     math::Size2 tileSize;
     geo::GeoDataset::Resampling resampling;
     math::Size2 minOvrSize;
-    boost::optional<int> wrapx;
     bool overwrite;
     PathToOriginalDataset pathToOriginalDataset;
     Color::optional background;

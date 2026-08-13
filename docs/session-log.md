@@ -8,6 +8,54 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-13 — the vrtwo wrap halo is gone; warps pad the seam themselves
+
+`generatevrtwo` padded an x-periodic dataset with a wrap halo so that
+resampling near ±180° had data from the opposite edge. Because GDAL
+overviews share the base dataset's extents, the halo had to be wide
+enough in ground units for the *coarsest* overview, which makes it
+3·2^levels pixels at base resolution — approaching one whole period per
+side on a deep pyramid, stored and warped at every level. The halo also
+defeated the tiling pass, whose source-window estimate depends on GDAL
+widening a wrapped window to the full raster; margins keep the window
+below that threshold.
+
+The wrap is now produced where it is needed instead of being stored.
+`geo::GeoDataset::warpInto` routes an x-periodic source through an
+in-memory view widened by a few wrapped columns whenever the warp
+destination reaches the seam, sized from the resampling kernel and the
+downsampling ratio and built after overview selection. Destinations away
+from the seam are recognised by the four corner transforms the
+source-window estimate already runs and are unaffected. Serving and
+overview generation both go through `warpInto`, so one mechanism covers
+both.
+
+`generatevrtwo` consequently writes every level at the extents of its
+input. It derives periodicity from the raster and crops a whole-column
+overlap (a duplicated antimeridian column, say) to reach exactly one
+period, so the `--wrapx` option is removed — as is the trap of
+re-reading a baked halo as a large `wrapx` on a second run. It also
+declares its output directory as its operating directory, so every run
+leaves a log and a startup banner like the other data-writing tools.
+
+Verified on a planetary DEM. The regenerated pyramid is byte-identical
+to the input at base level; overviews differ from the previously
+deployed pyramid almost entirely by one unit of quantisation, which is
+smaller than the difference the same source already produces when warped
+into two different destination widths. Against an independent reference
+built by warping a half-period-rolled copy — where the seam is interior
+and needs no wrap handling at all — the new pyramid's seam columns are
+several times closer than the old halo's. A re-tile reproduces the flag
+tile index byte for byte; the metanode store differs only in its source
+hash and in the height ranges of a few dozen nodes, every one of them on
+a face-boundary column at the seam. Serving costs the same: interior and
+seam tiles time within noise of the halo'd dataset.
+
+Existing datasets keep working — their extents are not one period, so
+the padding does not engage and they behave exactly as before. Deploy
+binaries before regenerating any dataset: a halo-less dataset served by
+an older binary would resample one-sided at the seam.
+
 ## 2026-08-13 — antimeridian warp options replaced by a one-period view
 
 The warp options the 2026-08-10 antimeridian fix added to the tiling

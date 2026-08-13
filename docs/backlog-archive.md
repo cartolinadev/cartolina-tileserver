@@ -7,6 +7,33 @@ numbers are not reused.
 
 **Newly closed entries go directly below this line, newest first.**
 
+## 7. PERF (tileserver): generatevrtwo wrap halo scales as 3·2^levels
+
+**Opened:** 2026-06-13
+**Status:** implemented 2026-08-13 — no dataset carries a wrap halo at
+all; the wrap is supplied per warp.
+
+generatevrtwo padded the base of an x-periodic dataset by 3·2^levels
+pixels per side so that the coarsest overview would still have three
+pixels of resampling context across the ±180° seam. GDAL overviews
+share the base extents, so the margin had to be sized in ground units
+at the coarsest level; on a deep pyramid that approaches one whole
+period per side, and the padded width was then stored and warped at
+every level.
+
+Neither of the ideas recorded here was taken. Per-level pixel padding
+cannot be expressed at all, since it implies per-level extents; capping
+the padded levels would have left the same margin in the base.
+
+Instead the halo is gone from the stored data and the wrap happens at
+warp time: `geo::GeoDataset::warpInto` reads an x-periodic source
+through a padded in-memory view whenever the destination reaches the
+seam, which covers overview generation and request-time serving alike.
+`generatevrtwo` writes every level at the extents of the input and
+derives the periodicity from the raster, so the `--wrapx` option — and
+with it the risk of feeding a baked halo back in as a large `wrapx` —
+is gone.
+
 ## 20. TOOLS: pad the filter-pass source window in x only
 
 **Opened:** 2026-08-13

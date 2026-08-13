@@ -635,13 +635,11 @@ vr::Credit::dict attributions2credits(const Config &config)
 void createVrtWO(const fs::path &srcPath
                  , const fs::path &root, const fs::path &name
                  , geo::GeoDataset::Resampling resampling
-                 , const calipers::Measurement &cm
                  , const Config &setupConfig)
 {
     vrtwo::Config config;
     config.resampling = resampling;
     config.overwrite = true;
-    config.wrapx = cm.xOverlap;
     config.background = setupConfig.background;
 
     config.createOptions
@@ -696,7 +694,7 @@ fs::path createVrtWO(const calipers::Measurement &cm
             createVrtWO(datasetPath, rootDir, "dem"
                         // , geo::GeoDataset::Resampling::average
                         , geo::GeoDataset::Resampling::cubicspline
-                        , cm, config);
+                        , config);
         }
 
         if (config.legacyTiling) {
@@ -706,7 +704,7 @@ fs::path createVrtWO(const calipers::Measurement &cm
             {
                 LogLinePrefix linePrefix(" (min)");
                 createVrtWO(datasetPath, rootDir, "dem.min"
-                            , geo::GeoDataset::Resampling::minimum, cm
+                            , geo::GeoDataset::Resampling::minimum
                             , config);
             }
 
@@ -714,7 +712,7 @@ fs::path createVrtWO(const calipers::Measurement &cm
             {
                 LogLinePrefix linePrefix(" (max)");
                 createVrtWO(datasetPath, rootDir, "dem.max"
-                            , geo::GeoDataset::Resampling::maximum, cm
+                            , geo::GeoDataset::Resampling::maximum
                             , config);
             }
         }
@@ -726,7 +724,7 @@ fs::path createVrtWO(const calipers::Measurement &cm
             createVrtWO(datasetPath, rootDir, "ophoto"
                         , (config.tmsResampling ? *config.tmsResampling
                            : geo::GeoDataset::Resampling::texture)
-                        , cm, config);
+                        , config);
         }
         break;
 

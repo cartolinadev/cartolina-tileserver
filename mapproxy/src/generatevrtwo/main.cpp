@@ -94,6 +94,9 @@ private:
 
     void configure(const po::variables_map &vars);
 
+    boost::optional<fs::path>
+    operatingDirectory(const po::variables_map &vars) const;
+
     bool help(std::ostream &out, const std::string &what) const;
 
     int run();
@@ -129,12 +132,6 @@ void VrtWo::configuration(po::options_description &cmdline
         ("overwrite", po::value(&config_.overwrite)->required()
          ->default_value(false)->implicit_value(true)
         , "Overwrite existing dataset.")
-        ("wrapx", po::value<int>()
-         ->implicit_value(0)
-        , "Wrap dataset in X direction. Optional. Value indicates number "
-         "of overlapping pixels. Useful only for global datasets spanning "
-         "longitude from -180 to +180. Probably could be guessed from input "
-         "data in future releases.")
         ("background", po::value<vrtwo::Color>()
         , "Optional background. If whole warped tile contains this "
          "color it is left empty in the output. Solid dataset with this color "
@@ -163,10 +160,6 @@ void VrtWo::configure(const po::variables_map &vars)
 {
     if (vars.count("background")) {
         config_.background = vars["background"].as<vrtwo::Color>();
-    }
-
-    if (vars.count("wrapx")) {
-        config_.wrapx = vars["wrapx"].as<int>();
     }
 
     if (!vars.count("co")) {
@@ -216,11 +209,6 @@ void VrtWo::configure(const po::variables_map &vars)
         << "\n\ttileSize = " << config_.tileSize
         << "\n\tresampling = " << config_.resampling
         << "\n\tminOvrSize = " << config_.minOvrSize
-        << "\n\twrapx = "
-        << utility::LManip([&](std::ostream &os) -> std::ostream& {
-                if (config_.wrapx) { return os << "true, " << *config_.wrapx; }
-                return os << "false";
-            })
         << "\n\tbackground = " << config_.background
         << "\n\tco = " << utility::join(co_, ", ")
         << utility::LManip([&](std::ostream &os) -> std::ostream& {
@@ -236,6 +224,16 @@ void VrtWo::configure(const po::variables_map &vars)
             })
         << "\n"
         ;
+}
+
+boost::optional<fs::path>
+VrtWo::operatingDirectory(const po::variables_map &vars) const
+{
+    // every run writes the dataset and its overviews into the output
+    // directory; that's where the log/ subdirectory and startup banner
+    // belong
+    if (!vars.count("output")) { return boost::none; }
+    return fs::absolute(vars["output"].as<fs::path>());
 }
 
 bool VrtWo::help(std::ostream &out, const std::string &what) const

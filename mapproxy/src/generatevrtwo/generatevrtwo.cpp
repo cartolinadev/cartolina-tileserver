@@ -38,7 +38,6 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/thread.hpp>
 #include <boost/format.hpp>
-#include <boost/range/adaptor/reversed.hpp>
 
 #include <gdal/vrtdataset.h>
 
@@ -135,16 +134,20 @@ UTILITY_GENERATE_ENUM(MaskType,
     ((band))
 )
 
+/** Largest accepted whole-column overlap of a global input over one
+ *  x-period (e.g. a duplicated antimeridian column).
+ */
+const int maxSeamOverlap(8);
+
 struct Setup {
     math::Size2 size;
     math::Extents2 extents;
     Sizes ovrSizes;
     Sizes ovrTiled;
-    int xPlus;
     MaskType maskType;
     fs::path outputDataset;
 
-    Setup() : xPlus(), maskType() {}
+    Setup() : maskType() {}
 };
 
 Setup makeSetup(const geo::GeoDataset::Descriptor &ds
@@ -160,6 +163,19 @@ Setup makeSetup(const geo::GeoDataset::Descriptor &ds
     });
 
     Setup setup;
+
+    // crop a global input to exactly one x-period; run-time warps wrap
+    // the seam from the opposite edge (geo::wrapPadSource)
+    const auto overlap(geo::xPeriodOverlap(ds, maxSeamOverlap));
+    if (overlap && *overlap) {
+
+        size.width -= *overlap;
+        extents.ur(0) -= *overlap * ds.resolution(0);
+        LOG(info3)
+            << "Cropping " << *overlap
+            << " column(s) overlapping one x-period.";
+    }
+
     setup.extents = extents;
     setup.size = size;
 
@@ -188,47 +204,13 @@ Setup makeSetup(const geo::GeoDataset::Descriptor &ds
         halve();
     }
 
-    auto makeTiled([&]()
-    {
-        const auto &ts(config.tileSize);
-        for (const auto &size : setup.ovrSizes) {
-            setup.ovrTiled.emplace_back
-                ((size.width + ts.width - 1) / ts.width
-                 , (size.height + ts.height - 1) / ts.height);
-        }
-    });
-
-    if (!config.wrapx) {
-        makeTiled();
-        return setup;
+    const auto &ts(config.tileSize);
+    for (const auto &size : setup.ovrSizes) {
+        setup.ovrTiled.emplace_back
+            ((size.width + ts.width - 1) / ts.width
+             , (size.height + ts.height - 1) / ts.height);
     }
 
-    // add 3 pixel to each side at bottom level and double on the way up
-    // 3 pixels because of worst scenario (lanczos filter)
-    int add(6);
-    for (auto &s : boost::adaptors::reverse(setup.ovrSizes)) {
-        s.width += add;
-        add *= 2;
-    }
-
-    // set x plus component
-    setup.xPlus = add / 2;
-
-    // calculate pixel width
-    auto es(math::size(setup.extents));
-    auto pw(es.width / setup.size.width);
-
-    // calculate addition
-    auto eadd(setup.xPlus * pw);
-
-    // apply addition in both dimensions
-    setup.extents.ll(0) -= eadd;
-    setup.extents.ur(0) += eadd;
-
-    // and finally update size
-    setup.size.width += add;
-
-    makeTiled();
     return setup;
 }
 
@@ -579,35 +561,10 @@ Setup buildDatasetBase(const Config &config
                  : in.rawNodataValue())
               , setup.maskType);
 
-    // add input bands
-    auto inSize(in.size());
+    // add input bands, cropped to the setup size
+    const Rect srcRect(setup.size);
     for (std::size_t i(0); i != in.bandCount(); ++i) {
-        if (config.wrapx) {
-            // wrapping in x
-
-            // get shift based on pixel overlap
-            const auto shift(*config.wrapx);
-
-            // add center section
-            Rect centerDst(math::Point2i(setup.xPlus, 0), inSize);
-            out.addSimpleSource(i, inputDataset, in, i
-                                , boost::none, centerDst);
-            math::Size2 strip(math::Size2(setup.xPlus, inSize.height));
-
-            Rect rightSrc
-                (math::Point2i(inSize.width - setup.xPlus - shift, 0)
-                 , strip);
-            Rect leftDst(math::Size2(setup.xPlus, inSize.height));
-            out.addSimpleSource(i, inputDataset, in, i, rightSrc, leftDst);
-
-            Rect leftSrc(math::Point2i(shift, 0)
-                         , math::Size2(setup.xPlus, inSize.height));
-            Rect rightDst(math::Point2i(inSize.width + setup.xPlus, 0)
-                              , strip);
-            out.addSimpleSource(i, inputDataset, in, i, leftSrc, rightDst);
-        } else {
-            out.addSimpleSource(i, inputDataset, in, i);
-        }
+        out.addSimpleSource(i, inputDataset, in, i, srcRect);
     }
 
     // done
