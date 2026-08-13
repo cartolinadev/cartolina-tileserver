@@ -8,6 +8,12 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-13 — generatevrtwo: undo self-inflicted "already exists" error
+
+The operating-directory change below made `generatevrtwo` create its own
+output directory as a log-setup side effect, then trip over it. `log/` now
+lives beside the output directory instead of inside it.
+
 ## 2026-08-13 — the vrtwo wrap halo is gone; warps pad the seam themselves
 
 `generatevrtwo` padded an x-periodic dataset with a wrap halo so that

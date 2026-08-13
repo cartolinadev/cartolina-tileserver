@@ -230,10 +230,11 @@ boost::optional<fs::path>
 VrtWo::operatingDirectory(const po::variables_map &vars) const
 {
     // every run writes the dataset and its overviews into the output
-    // directory; that's where the log/ subdirectory and startup banner
-    // belong
+    // directory, which is itself the produced artifact (as a single raw
+    // dataset file is for mapproxy-tiling); the log/ subdirectory and
+    // startup banner belong beside it, in its parent directory
     if (!vars.count("output")) { return boost::none; }
-    return fs::absolute(vars["output"].as<fs::path>());
+    return fs::absolute(vars["output"].as<fs::path>()).parent_path();
 }
 
 bool VrtWo::help(std::ostream &out, const std::string &what) const
