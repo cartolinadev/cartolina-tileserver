@@ -18,6 +18,27 @@ existing entry, even one added earlier in the same session. Assign the next
 entry the number one higher than the highest number used so far across this
 file and [backlog-archive.md](backlog-archive.md).**
 
+## 21. Retire the copied `GDALWarpOperation` once the GDAL baseline allows
+
+**Opened:** 2026-08-13
+**Status:** open, blocked on the Ubuntu 22.04 build baseline (standard
+support ends April 2027)
+
+`geo/detail/gdalwarpoperation.{hpp,cpp}` in `externals/libgeo` transcribes
+GDAL 2.0.2's `GDALWarpOperation` so that `WarpMemoryMeter` can reach
+`CollectChunkList` and the chunk list, which GDAL keeps private; the
+estimate drives overview selection in `geo/geodataset.cpp`. It is a
+simulator of whatever GDAL is linked in, ten years out of sync with it, and
+every divergence is a silent wrong answer rather than a build failure — the
+dateline fix of 2026-08-13 was one, and 3.4.1's restructured chunk walk
+guarantees more.
+
+Later GDAL exposes `ComputeSourceWindow()` and `GetWorkingMemoryForWindow()`
+as protected members, which is enough to subclass the real class instead of
+copying it. Gate on the GDAL version — the tree already carries such gates —
+and drop the copied module once every supported distribution provides the
+new API. Do not resync the copy in the meantime.
+
 ## 19. Publish surface credits in the map configuration
 
 **Opened:** 2026-07-31

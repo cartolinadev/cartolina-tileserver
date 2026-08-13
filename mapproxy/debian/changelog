@@ -1,3 +1,11 @@
+cartolina-tileserver (1.132) testing; urgency=medium
+
+  * fix dateline surface tiles from an exact-period global raster being
+    served at an overview four times coarser than their interior
+    neighbours
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 13 Aug 2026 23:12:25 +0200
+
 cartolina-tileserver (1.131) testing; urgency=medium
 
   * fix generatevrtwo throwing a false "output directory already exists"
