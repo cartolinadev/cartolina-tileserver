@@ -8,6 +8,34 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-13 — dateline warps keep the resolution selected by scale
+
+Dateline surface tiles from an exact-period global raster fell back to an
+overview four times coarser than their interior neighbours. Overview
+selection initially chose the correct level, but its second, memory-based
+check estimated an impossibly tall source window and rejected that level.
+
+The in-tree warp-operation copy had kept an old source-window calculation
+that replaced the horizontal and vertical resampling radii with their
+maximum. A dateline window can legitimately have a very large horizontal
+radius; applying it vertically made the memory estimate cover almost the
+full source height. The calculation now keeps the two axes separate, as
+current GDAL does.
+
+The memory check now also measures the wrapped source view used by the
+actual warp. Exact-period sources skip the older `SOURCE_EXTRA` seam
+workaround because that view already supplies the required pixels.
+When the memory check is disabled, the warp still pads the source. The
+second overview pass also rejects an unusable overview before it can leave a
+stale transformer and records any overview change in the returned warp
+information.
+
+Verified with paired dateline and adjacent interior requests against a
+freshly generated exact-period global DEM. All requests selected the same
+overview and scale, the two interior outputs were unchanged, and both
+dateline requests returned successfully. A halo-less planetary seam case
+also continued to use its expected overview and returned all tested tiles.
+
 ## 2026-08-13 — generatevrtwo: undo self-inflicted "already exists" error
 
 The operating-directory change below made `generatevrtwo` create its own
