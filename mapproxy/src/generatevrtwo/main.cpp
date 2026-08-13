@@ -83,7 +83,7 @@ const math::Size2 minOvrSize(2, 2);
 class VrtWo : public service::Cmdline {
 public:
     VrtWo()
-        : service::Cmdline("generageVrtWo", BUILD_TARGET_VERSION)
+        : service::Cmdline("generatevrtwo", BUILD_TARGET_VERSION)
     {
     }
 

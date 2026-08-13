@@ -167,13 +167,18 @@ Setup makeSetup(const geo::GeoDataset::Descriptor &ds
     // crop a global input to exactly one x-period; run-time warps wrap
     // the seam from the opposite edge (geo::wrapPadSource)
     const auto overlap(geo::xPeriodOverlap(ds, maxSeamOverlap));
-    if (overlap && *overlap) {
+    if (overlap) {
 
         size.width -= *overlap;
         extents.ur(0) -= *overlap * ds.resolution(0);
         LOG(info3)
-            << "Cropping " << *overlap
-            << " column(s) overlapping one x-period.";
+            << "Input is x-periodic, cropping " << *overlap
+            << " column(s) overlapping one x-period; overviews are warped "
+            "with seam wrapping.";
+    } else {
+        LOG(info3)
+            << "Input is not x-periodic; overviews are warped without seam "
+            "wrapping.";
     }
 
     setup.extents = extents;
