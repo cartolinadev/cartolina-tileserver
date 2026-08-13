@@ -1,3 +1,13 @@
+cartolina-tileserver (1.131) testing; urgency=medium
+
+  * fix generatevrtwo throwing a false "output directory already exists"
+    error on every fresh run: the framework's log/ setup created the
+    output directory as a side effect before generate() ran its own
+    existence check. log/ now lives beside the output directory instead
+    of inside it
+
+ -- Ondrej Prochazka <ondrej.prochazka@montevallo.cz>  Thu, 13 Aug 2026 19:00:00 +0200
+
 cartolina-tileserver (1.130) testing; urgency=medium
 
   * fix the 1.127 antimeridian-gap fix regressing tiling speed: a
