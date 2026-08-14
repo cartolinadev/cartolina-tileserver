@@ -18,6 +18,82 @@ existing entry, even one added earlier in the same session. Assign the next
 entry the number one higher than the highest number used so far across this
 file and [backlog-archive.md](backlog-archive.md).**
 
+## 23. A dataset replaced under a running daemon is served from stale caches
+
+**Opened:** 2026-08-14
+**Status:** open
+
+`DatasetCache`
+([datasetcache.cpp](../mapproxy/src/mapproxy/gdalsupport/datasetcache.cpp))
+maps a path to an open `geo::GeoDataset` and never invalidates it. Each GDAL
+warper process builds its own cache when it starts and holds it for the whole
+life of the process; the only thing that ever clears one is `killLeviathan`
+terminating that worker for exceeding `rssLimit`.
+
+Replacing a warp pyramid in place under a running server therefore keeps the
+old parse alive in every worker that had opened it. GDAL defers opening a
+VRT's sources until pixel access, so the symptom is a warp that fails on a
+file the new tree does not contain, at a path under the current dataset —
+which reads as a corrupt dataset rather than a stale handle. It hits some
+requests and not others, because only the workers that touched the tree
+before the swap carry it, and it does not heal on its own.
+
+The cache exists to avoid a `GDALOpen` per warp, which is worth having. It
+has no expiry for no reason other than that none was ever written.
+
+Two candidate fixes, cheapest first:
+
+- A ctrl command that cycles the warper workers, beside `update-resources`
+  in [main.cpp](../mapproxy/src/mapproxy/main.cpp). The manager already
+  refills `workers_` to `processCount` whenever a worker dies, and a request
+  in flight on a dying worker is already reported as an internal error, so
+  cycling is just terminating them. That gives an operator replacing a
+  dataset an action that keeps the HTTP service up; today the only remedy is
+  a full restart.
+- Stat the keyed path on lookup and re-open when device, inode or mtime
+  change. This catches a wholesale directory swap, which is how a pyramid is
+  usually replaced, but not a rewrite below the root — a single overview
+  level regenerated in place leaves the tree root untouched. Worth adding
+  only alongside the first, and only if the per-warp `stat` proves free.
+
+Until one of them lands the rule belongs in the operator guide: after
+replacing a dataset in place, restart the server.
+
+## 22. `generatevrtwo` scales poorly beyond a few cores
+
+**Opened:** 2026-08-14
+**Status:** open, diagnosis unconfirmed
+
+On a many-core machine the tool leaves most cores idle. Two properties of
+`createOverview`
+([generatevrtwo.cpp](../mapproxy/src/generatevrtwo/generatevrtwo.cpp)) can
+produce that, and it is not yet known which dominates:
+
+- The GTiff write is serialized. When the mask type is not `band` — any
+  input with an all-valid or nodata mask — `createOutputDataset` holds the
+  `createOutputDataset` critical section across the whole of
+  `GeoDataset::copy`, which is `GDALDriver::CreateCopy` and therefore the
+  entire compression of the tile. Every worker contends on one lock for
+  the compression of a full tile, while the warp that feeds it runs
+  unlocked. The `band` branch below it holds the lock only for dataset
+  creation and compresses outside it, so the fast path is the serialized
+  one.
+- Tile count bounds the parallelism per level. The unit of work is one
+  tile of one overview, the level loop in `generate` is serial because
+  each level warps from the previous one's VRT, and tile counts fall by
+  four per level. Below the first level or two there are fewer tiles than
+  cores, whatever the lock does.
+
+The environment is the third possibility and the cheapest to eliminate:
+there is no thread-count option, so libgomp sizes the pool from the
+affinity mask, and a cgroup or `taskset` restriction produces the same
+symptom directly.
+
+A thread backtrace of a running job separates the first from the second —
+workers parked in `GOMP_critical_name_start` against workers parked
+nowhere. `Creating overview #N of M tiles` in the log gives the per-level
+tile count. Take that evidence before changing anything.
+
 ## 21. Retire the copied `GDALWarpOperation` once the GDAL baseline allows
 
 **Opened:** 2026-08-13
