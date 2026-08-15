@@ -8,6 +8,26 @@ This log records significant work and non-obvious findings that apply only to
 **New entries go directly below this line, newest first — never below an
 existing entry, even one added earlier in the same session.**
 
+## 2026-08-15 — generatevrtwo compresses independent tiles in parallel
+
+`generatevrtwo` serialized every `GDALDriver::CreateCopy`, including the
+compression of an entire overview tile. The lock was added in 2016 without
+a recorded reason. GDAL 2.1 still had global raster block-cache deadlocks
+and unsafe multithreaded write paths; GDAL 2.2 fixed them, and current GDAL
+defines calls on separate dataset instances as re-entrant.
+
+Each overview worker owns its source handle, in-memory warp target, and
+output file. The output lock therefore remains only when compiling against
+GDAL older than 2.2. The lock around the shared overview VRT is unchanged,
+and tile count still limits parallelism on coarse levels. The stale
+commented `NUM_THREADS=ALL_CPUS` creation option is gone: tile-level OpenMP
+provides the parallelism without nesting another all-core pool in each tile.
+
+A complete pyramid regenerated with the unlocked path produced every
+GeoTIFF tile byte for byte and identical raster checksums at every overview
+level. A separate explicit-mask run produced byte-identical tiles with one
+and multiple workers and preserved the dataset mask.
+
 ## 2026-08-13 — dateline warps keep the resolution selected by scale
 
 Dateline surface tiles from an exact-period global raster fell back to an

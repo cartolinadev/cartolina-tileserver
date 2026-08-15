@@ -763,7 +763,11 @@ void createOutputDataset(const geo::GeoDataset &original
 {
     if (maskType != MaskType::band) {
         // we can copy as is
+#if GDAL_VERSION_NUM < 2020000
+        // Older GDAL versions cannot write independent raster datasets
+        // concurrently through the shared block cache.
         UTILITY_OMP(critical(createOutputDataset))
+#endif
             src.copy(path, "GTiff", createOptions);
         return;
     }
@@ -776,7 +780,11 @@ void createOutputDataset(const geo::GeoDataset &original
 
     auto dst(geo::GeoDataset::placeholder());
 
+#if GDAL_VERSION_NUM < 2020000
+    // Older GDAL versions cannot create independent raster datasets
+    // concurrently through the shared block cache.
     UTILITY_OMP(critical(createOutputDataset))
+#endif
         dst = geo::GeoDataset::create(path, src.srs(), src.extents()
                                       , src.size(), format, boost::none
                                       , createOptions);

@@ -69,8 +69,6 @@ namespace def {
 std::vector<std::string> createOptions {
     "COMPRESS=DEFLATE"
     , "PREDICTOR" // if not set, predictor will be set to 2/3 for int/float
- // buggy in GDAL 2.1, some tiles are not writen
- // , "NUM_THREADS=ALL_CPUS"
     , "ZLEVEL=9"
 };
 

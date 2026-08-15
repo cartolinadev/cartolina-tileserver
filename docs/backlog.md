@@ -59,41 +59,6 @@ Two candidate fixes, cheapest first:
 Until one of them lands the rule belongs in the operator guide: after
 replacing a dataset in place, restart the server.
 
-## 22. `generatevrtwo` scales poorly beyond a few cores
-
-**Opened:** 2026-08-14
-**Status:** open, diagnosis unconfirmed
-
-On a many-core machine the tool leaves most cores idle. Two properties of
-`createOverview`
-([generatevrtwo.cpp](../mapproxy/src/generatevrtwo/generatevrtwo.cpp)) can
-produce that, and it is not yet known which dominates:
-
-- The GTiff write is serialized. When the mask type is not `band` — any
-  input with an all-valid or nodata mask — `createOutputDataset` holds the
-  `createOutputDataset` critical section across the whole of
-  `GeoDataset::copy`, which is `GDALDriver::CreateCopy` and therefore the
-  entire compression of the tile. Every worker contends on one lock for
-  the compression of a full tile, while the warp that feeds it runs
-  unlocked. The `band` branch below it holds the lock only for dataset
-  creation and compresses outside it, so the fast path is the serialized
-  one.
-- Tile count bounds the parallelism per level. The unit of work is one
-  tile of one overview, the level loop in `generate` is serial because
-  each level warps from the previous one's VRT, and tile counts fall by
-  four per level. Below the first level or two there are fewer tiles than
-  cores, whatever the lock does.
-
-The environment is the third possibility and the cheapest to eliminate:
-there is no thread-count option, so libgomp sizes the pool from the
-affinity mask, and a cgroup or `taskset` restriction produces the same
-symptom directly.
-
-A thread backtrace of a running job separates the first from the second —
-workers parked in `GOMP_critical_name_start` against workers parked
-nowhere. `Creating overview #N of M tiles` in the log gives the per-level
-tile count. Take that evidence before changing anything.
-
 ## 21. Retire the copied `GDALWarpOperation` once the GDAL baseline allows
 
 **Opened:** 2026-08-13
